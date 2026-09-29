@@ -1,3 +1,30 @@
 spring:
+  config:
+    import: optional:file:./.env[.properties]
+
   application:
     name: taskflow-backend
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/taskflow_db}
+    username: ${DATABASE_USERNAME:taskflow_app}
+    password: ${DATABASE_PASSWORD:}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: filesystem:../database/migrations
+
+server:
+  port: 8081
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:}
+    expiration: ${JWT_EXPIRATION_MS:86400000}
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
