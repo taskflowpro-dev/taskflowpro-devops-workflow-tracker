@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TaskFlow Pro — Work, in flow",
-  description: "A calmer, clearer way to move work forward.",
+  description: "A focused workspace for moving work forward.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
