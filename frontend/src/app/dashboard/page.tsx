@@ -1,10 +1,26 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useAuth } from "@/app/providers";
 import { Brand, Icon } from "@/components/brand";
 
 export default function DashboardPage() {
   const { user, loading, logout } = useAuth();
+  const [today, setToday] = useState("");
+
+  useEffect(() => {
+    const updateDate = () => setToday(new Intl.DateTimeFormat("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date()).toUpperCase());
+
+    updateDate();
+    const interval = window.setInterval(updateDate, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const initial = user?.name?.trim().charAt(0).toUpperCase() ?? "U";
   return <div className="dashboard-shell">
     <aside className="sidebar">
@@ -23,7 +39,7 @@ export default function DashboardPage() {
     <main className="dashboard-main">
       <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>Dashboard</b></div><div className="topbar-right"><span className="live-dot"/> All changes saved <div className="avatar small-avatar">{initial}</div></div></header>
       <div className="dashboard-content">
-        <div className="welcome-row"><div><div className="eyebrow">MONDAY, SEPTEMBER 29, 2026</div><h1>Good morning, {user?.name?.split(" ")[0] ?? "there"} <span className="wave">✦</span></h1><p>Here’s what’s happening across your workspace today.</p></div><button className="outline-button" disabled title="Task management is coming soon">＋ <span>New task</span></button></div>
+        <div className="welcome-row"><div><div className="eyebrow">{today}</div><h1>Good morning, {user?.name?.split(" ")[0] ?? "there"} <span className="wave">✦</span></h1><p>Here’s what’s happening across your workspace today.</p></div><button className="outline-button" disabled title="Task management is coming soon">＋ <span>New task</span></button></div>
         <section className="stats-grid" aria-label="Task statistics">
           <article className="stat-card"><div className="stat-head"><span>Open tasks</span><span className="stat-icon violet"><Icon name="check"/></span></div><div className="stat-value">—</div><div className="stat-note">Task data will appear here</div></article>
           <article className="stat-card"><div className="stat-head"><span>In progress</span><span className="stat-icon blue"><span className="ring-icon"/></span></div><div className="stat-value">—</div><div className="stat-note">Connected when tasks are enabled</div></article>
