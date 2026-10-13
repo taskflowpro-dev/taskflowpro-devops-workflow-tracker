@@ -17,8 +17,11 @@ RUN ./mvnw dependency:go-offline
 # Copy backend source
 COPY backend/src ./src
 
+# Include the shared repository migrations in the application classpath.
+COPY database/migrations ./src/main/resources/db/migration
+
 # Build the Spring Boot application
-RUN ./mvnw clean package -DskipTests
+RUN ./mvnw -B clean package -DskipTests
 
 
 # =========================
@@ -31,8 +34,11 @@ WORKDIR /app/backend
 # Copy generated JAR
 COPY --from=build /app/target/*.jar app.jar
 
-# Copy Flyway migrations
-COPY database/migrations ../database/migrations
+# Flyway migrations are run from the packaged application, so no host path is
+# required at runtime.
+
+RUN useradd --system --uid 10001 --create-home appuser
+USER 10001
 
 EXPOSE 8081
 

@@ -8,6 +8,25 @@ TaskFlow Pro is a team workspace for organizing work. The initial application in
 
 ## Getting Started
 
+### Run with Docker Compose
+
+Requirements: Docker Engine with the Compose plugin.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit the root `.env` and set `DATABASE_PASSWORD` and `JWT_SECRET`. `JWT_SECRET` must be at least 32 characters. `DATABASE_URL` uses `localhost` for local backend runs; Compose overrides it to use the `db` service inside Docker. Then build and start the stack:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+```
+
+Open `http://localhost:3000`; the API is available at `http://localhost:8081`. To view logs, run `docker compose logs -f`; to stop the services while keeping database data, run `docker compose down`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
+
+The frontend API URL is embedded into the Next.js image during its build. If you change `NEXT_PUBLIC_API_URL`, rebuild the web image with `docker compose build web`.
+
 Clone the repository locally:
 
 ```bash
@@ -23,7 +42,7 @@ cd taskflowpro-devops-workflow-tracker
 
 ### Configure and start the backend
 
-Backend configuration is loaded from `backend/.env` (ignored by Git). `backend/.env.example` lists the required variables. Set `DATABASE_PASSWORD` to the PostgreSQL password for `taskflow_app`. `JWT_SECRET` must be a random secret of at least 32 bytes. Flyway reads migrations from the root `database/migrations/` folder; Hibernate validates the schema and does not create tables.
+Backend configuration is loaded from `backend/.env` (ignored by Git) when running Spring Boot locally. The root `.env.example` lists the shared configuration values. Set `DATABASE_PASSWORD` to the PostgreSQL password for `taskflow_app`. `JWT_SECRET` must be a random secret of at least 32 bytes. Flyway reads migrations from the packaged application; Hibernate validates the schema and does not create tables.
 
 PowerShell example:
 
@@ -32,7 +51,7 @@ cd backend
 .\mvnw.cmd spring-boot:run
 ```
 
-Copy `.env.example` to `.env` in `backend/` if the local env file is missing, then replace the database password and JWT secret with your own values. Start Spring Boot with `backend/` as the working directory so Flyway can resolve `../database/migrations`.
+For local development, keep a `backend/.env` file with local database settings; copy the root `.env.example` into `backend/.env` and adjust `DATABASE_URL` to use `localhost`. Start Spring Boot with `backend/` as the working directory.
 
 The API listens on `http://localhost:8081`.
 
