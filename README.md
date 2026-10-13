@@ -25,6 +25,17 @@ docker compose ps
 
 Open `http://localhost:3000`; the API is available at `http://localhost:8081`. To view logs, run `docker compose logs -f`; to stop the services while keeping database data, run `docker compose down`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
 
+Start and stop the containers manually with:
+
+```powershell
+docker compose up -d       # Start the services
+docker compose stop        # Stop them; keep containers and database data
+docker compose start       # Start the stopped containers again
+docker compose down        # Stop and remove containers; keep database data
+```
+
+Use `docker compose up --build -d` after changing application code or Dockerfiles to rebuild images and start the services. Services have no automatic restart policy, so they stay stopped when Docker or the computer restarts until you start them again.
+
 The frontend API URL is embedded into the Next.js image during its build. If you change `NEXT_PUBLIC_API_URL`, rebuild the web image with `docker compose build web`.
 
 Clone the repository locally:

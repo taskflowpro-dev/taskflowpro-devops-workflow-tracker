@@ -3,7 +3,6 @@ name: taskflow-pro
 services:
   db:
     image: postgres:17-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-taskflow_db}
       POSTGRES_USER: ${DATABASE_USERNAME:-taskflow_app}
@@ -24,7 +23,6 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    restart: unless-stopped
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-taskflow_db}
       DATABASE_USERNAME: ${DATABASE_USERNAME:-taskflow_app}
@@ -53,7 +51,6 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081}
-    restart: unless-stopped
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
