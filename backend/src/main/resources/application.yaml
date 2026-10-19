@@ -17,7 +17,7 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/migration,filesystem:../database/migrations
 
 server:
   port: 8081

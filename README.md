@@ -84,6 +84,10 @@ Open `http://localhost:3000`. Set `NEXT_PUBLIC_API_URL` if the API runs on a dif
 
 Registration and login accept JSON with `name`, `email`, and `password` (registration), or `email` and `password` (login). Protected requests use `Authorization: Bearer <token>`.
 
+### Dashboard repository analysis
+
+From the authenticated dashboard, paste a public GitHub repository URL such as `https://github.com/owner/repository`. TaskFlow Pro saves the repository and analyzes its metadata, open issues, GitHub Actions workflows, and latest workflow run. The report checks for CI triggers, tests, linting, container builds, deployments, and security scanning, then suggests backlog tasks that can be added to the Kanban board. Private repositories are not supported until a GitHub credential integration is configured.
+
 ## Suggested Workflow
 
 1. Create or update a task for the work being planned.
