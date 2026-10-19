@@ -9,6 +9,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -40,6 +41,11 @@ public class ApiExceptionHandler {
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .distinct().collect(Collectors.joining("; "));
         return response(HttpStatus.BAD_REQUEST, message.isBlank() ? "Request validation failed." : message);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<Map<String, Object>> responseStatus(ResponseStatusException ex) {
+        return response(HttpStatus.valueOf(ex.getStatusCode().value()), ex.getReason() == null ? ex.getStatusCode().toString() : ex.getReason());
     }
 
     @ExceptionHandler(Exception.class)
