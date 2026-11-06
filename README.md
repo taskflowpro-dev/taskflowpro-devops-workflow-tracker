@@ -4,7 +4,7 @@ A centralized workspace for tracking DevOps workflows, tasks, releases, and oper
 
 ## Overview
 
-TaskFlow Pro is a team workspace for organizing work. The initial application includes Spring Boot authentication, PostgreSQL persistence, and a Next.js dashboard shell.
+TaskFlow Pro gives each account a private workspace for organizing work, with Spring Boot authentication, PostgreSQL persistence, and a Next.js dashboard.
 
 ## Getting Started
 
@@ -83,6 +83,25 @@ Open `http://localhost:3000`. Set `NEXT_PUBLIC_API_URL` if the API runs on a dif
 - `GET /api/users/me` — returns the authenticated user's safe profile.
 
 Registration and login accept JSON with `name`, `email`, and `password` (registration), or `email` and `password` (login). Protected requests use `Authorization: Bearer <token>`.
+
+### Private workspaces
+
+The dashboard shows only the authenticated user's projects, tasks, deployments, and saved repository reports. API reads and writes enforce ownership using the authenticated token. Requests to modify another user's records return `404`. The workspace user list contains only the account owner; private tasks can be unassigned or assigned to that owner. Project names and repository tracking are unique per account.
+
+Migration V5 retains existing records with their creator (`created_by`, `deployed_by`, or `added_by`). If a task previously used another creator's project, a private project with the same name is created for the task owner, without copying the other creator's description. Existing assignments to other users are cleared. Team sharing is a separate feature and is not enabled by this migration.
+
+### Private workspace checks
+
+The API isolation and migration tests require a dedicated PostgreSQL test database. They run only when `TEST_DATABASE_URL` is set; use a test database rather than an application database. From `backend/`:
+
+```powershell
+$env:TEST_DATABASE_URL = 'jdbc:postgresql://localhost:5432/taskflow_test'
+$env:TEST_DATABASE_USERNAME = 'postgres'
+$env:TEST_DATABASE_PASSWORD = 'your-test-database-password'
+.\mvnw.cmd '-Dtest=PrivateWorkspaceIntegrationTests,PrivateWorkspaceMigrationTests' test
+```
+
+The checks cover two-account read/write isolation, private project names and repository reports, assignment restrictions, authentication, and upgrading legacy shared records. The GitHub analyzer is mocked, so these tests make no GitHub requests.
 
 ### Dashboard repository analysis
 
