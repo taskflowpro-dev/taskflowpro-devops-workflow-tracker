@@ -31,11 +31,11 @@ public class RepositoryController {
     }
 
     @GetMapping
-    public List<Map<String, Object>> repositories() {
+    public List<Map<String, Object>> repositories(@AuthenticationPrincipal Jwt jwt) {
         return jdbc.query("""
                 SELECT id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt",
                        last_analysis::text AS "analysisJson"
-                FROM tracked_repositories ORDER BY analyzed_at DESC
+                FROM tracked_repositories WHERE added_by = ? ORDER BY analyzed_at DESC
                 """, (row, index) -> {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", row.getLong("id"));
@@ -46,31 +46,33 @@ public class RepositoryController {
             result.put("analyzedAt", row.getTimestamp("analyzedAt").toInstant().toString());
             result.put("analysisJson", row.getString("analysisJson"));
             return withParsedAnalysis(result);
-        });
+        }, Long.valueOf(jwt.getSubject()));
     }
 
     @PostMapping("/analyze")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> analyze(@Valid @RequestBody AnalyzeRequest request, @AuthenticationPrincipal Jwt jwt) {
         GitHubRepositoryAnalyzer.RepositoryRef ref = analyzer.parseUrl(request.url());
-        return analyzeAndSave(ref, Long.valueOf(jwt.getSubject()));
+        return analyzeAndSave(ref, Long.parseLong(jwt.getSubject()), null);
     }
 
     @PostMapping("/{id}/refresh")
-    public Map<String, Object> refresh(@PathVariable long id) {
-        String url = jdbc.query("SELECT url FROM tracked_repositories WHERE id = ?", row -> row.next() ? row.getString(1) : null, id);
+    public Map<String, Object> refresh(@PathVariable long id, @AuthenticationPrincipal Jwt jwt) {
+        long userId = Long.parseLong(jwt.getSubject());
+        String url = jdbc.query("SELECT url FROM tracked_repositories WHERE id = ? AND added_by = ?",
+                row -> row.next() ? row.getString(1) : null, id, userId);
         if (url == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
-        return analyzeAndSave(analyzer.parseUrl(url), null);
+        return analyzeAndSave(analyzer.parseUrl(url), userId, id);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable long id) {
-        if (jdbc.update("DELETE FROM tracked_repositories WHERE id = ?", id) == 0)
+    public void delete(@PathVariable long id, @AuthenticationPrincipal Jwt jwt) {
+        if (jdbc.update("DELETE FROM tracked_repositories WHERE id = ? AND added_by = ?", id, Long.valueOf(jwt.getSubject())) == 0)
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
     }
 
-    private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, Long addedBy) {
+    private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, long userId, Long repositoryId) {
         Map<String, Object> analysis = analyzer.analyze(ref.canonicalUrl());
         String fullName = (String) analysis.get("fullName");
         String description = (String) analysis.get("description");
@@ -79,26 +81,27 @@ public class RepositoryController {
         try { analysisJson = mapper.writeValueAsString(analysis); }
         catch (JacksonException exception) { throw new IllegalStateException("Could not store repository analysis.", exception); }
 
-        if (addedBy == null) {
-            jdbc.update("""
+        Map<String, Object> saved;
+        if (repositoryId != null) {
+            List<Map<String, Object>> rows = jdbc.queryForList("""
                     UPDATE tracked_repositories SET url = ?, full_name = ?, description = ?, language = ?,
                         last_analysis = ?::jsonb, analyzed_at = CURRENT_TIMESTAMP
-                    WHERE owner = ? AND repository = ?
-                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, ref.owner(), ref.name());
+                    WHERE id = ? AND added_by = ?
+                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
+                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, repositoryId, userId);
+            if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
+            saved = rows.getFirst();
         } else {
-            jdbc.update("""
+            saved = jdbc.queryForMap("""
                     INSERT INTO tracked_repositories(owner, repository, url, full_name, description, language, last_analysis, added_by)
                     VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)
-                    ON CONFLICT (owner, repository) DO UPDATE SET url = EXCLUDED.url, full_name = EXCLUDED.full_name,
+                    ON CONFLICT (added_by, owner, repository) DO UPDATE SET url = EXCLUDED.url, full_name = EXCLUDED.full_name,
                         description = EXCLUDED.description, language = EXCLUDED.language,
                         last_analysis = EXCLUDED.last_analysis, analyzed_at = CURRENT_TIMESTAMP
-                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, addedBy);
+                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
+                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, userId);
         }
 
-        Map<String, Object> saved = jdbc.queryForMap("""
-                SELECT id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
-                FROM tracked_repositories WHERE owner = ? AND repository = ?
-                """, ref.owner(), ref.name());
         saved.put("analysis", analysis);
         return saved;
     }
