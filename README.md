@@ -88,9 +88,19 @@ Registration and login accept JSON with `name`, `email`, and `password` (registr
 
 The dashboard shows only the authenticated user's projects, tasks, deployments, and saved repository reports. API reads and writes enforce ownership using the authenticated token. Requests to modify another user's records return `404`. The workspace user list contains only the account owner; private tasks can be unassigned or assigned to that owner. Project names and repository tracking are unique per account.
 
-Migration V5 retains existing records with their creator (`created_by`, `deployed_by`, or `added_by`). If a task previously used another creator's project, a private project with the same name is created for the task owner, without copying the other creator's description. Existing assignments to other users are cleared. Team sharing is a separate feature and is not enabled by this migration.
+Migration V5 retains existing records with their creator (`created_by`, `deployed_by`, or `added_by`). If a task previously used another creator's project, a private project with the same name is created for the task owner, without copying the other creator's description. Existing assignments to other users are cleared.
 
-### Private workspace checks
+### Team workspaces
+
+The sidebar **Team** link opens `/teams`, where you can create a team, open a team you belong to, or respond to an invitation. A team opens at `/teams/{id}` and has its own tasks, projects, deployments, and repository reports. `/dashboard` always opens your personal workspace.
+
+Team owners invite registered accounts by email from the team dashboard. Invitations appear inside the recipient's Team page; no email is sent. Accepting an invitation adds membership, while declining it grants no access. All accepted members can work on shared records and assign tasks to other members. The owner can remove members, and members can leave. The owner cannot leave their own team. Removing membership revokes team access and clears that member's assignments in that team, while keeping shared contributions and personal records.
+
+Workspace data endpoints accept an optional `teamId` query parameter. Without it, they use the authenticated account's personal workspace. Every team request checks membership, and record IDs must belong to the selected workspace. Project names and tracked repositories are unique within a workspace.
+
+Migration V6 adds explicit workspace IDs and assigns all existing records to their owner's personal workspace. It does not move any personal data into teams. New teams start empty.
+
+### Workspace checks
 
 The API isolation and migration tests require a dedicated PostgreSQL test database. They run only when `TEST_DATABASE_URL` is set; use a test database rather than an application database. From `backend/`:
 
@@ -98,10 +108,10 @@ The API isolation and migration tests require a dedicated PostgreSQL test databa
 $env:TEST_DATABASE_URL = 'jdbc:postgresql://localhost:5432/taskflow_test'
 $env:TEST_DATABASE_USERNAME = 'postgres'
 $env:TEST_DATABASE_PASSWORD = 'your-test-database-password'
-.\mvnw.cmd '-Dtest=PrivateWorkspaceIntegrationTests,PrivateWorkspaceMigrationTests' test
+.\mvnw.cmd '-Dtest=PrivateWorkspaceIntegrationTests,PrivateWorkspaceMigrationTests,TeamWorkspaceIntegrationTests,TeamWorkspaceMigrationTests' test
 ```
 
-The checks cover two-account read/write isolation, private project names and repository reports, assignment restrictions, authentication, and upgrading legacy shared records. The GitHub analyzer is mocked, so these tests make no GitHub requests.
+The checks cover personal isolation, team invitations and acceptance, shared CRUD, owner permissions, membership revocation, assignment restrictions, authentication, and upgrading both legacy shared data and personal records. The GitHub analyzer is mocked, so these tests make no GitHub requests.
 
 ### Dashboard repository analysis
 
