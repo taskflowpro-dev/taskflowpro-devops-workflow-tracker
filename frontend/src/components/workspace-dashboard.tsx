@@ -1,10 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
-import { Brand, Icon } from "@/components/brand";
+import { Icon } from "@/components/brand";
+import WorkspaceSidebar from "@/components/workspace-sidebar";
 import { api, type Team, type User } from "@/lib/auth";
 
 type Status = "TODO" | "IN_PROGRESS" | "DONE";
@@ -138,20 +138,7 @@ export default function WorkspaceDashboard({ team }: { team?: Team }) {
   }
 
   return <div className="dashboard-shell">
-    <aside className="sidebar">
-      <div className="sidebar-brand"><Brand /></div><div className="workspace-label">{team ? "TEAM WORKSPACE" : "PRIVATE WORKSPACE"}</div>
-      <nav className="side-nav" aria-label="Main navigation">
-        <Link className={`side-link${team ? "" : " active"}`} href={team ? "/dashboard" : "#overview"}><Icon name="grid"/><span>{team ? "Private workspace" : "Dashboard"}</span></Link>
-        <a className="side-link" href="#tasks"><Icon name="check"/><span>{team ? "Tasks" : "My Tasks"}</span></a>
-        <a className="side-link" href="#projects"><Icon name="folder"/><span>Projects</span></a>
-        <a className="side-link" href="#repository-analysis"><Icon name="spark"/><span>Repository</span></a>
-        <a className="side-link" href="#deployments"><Icon name="spark"/><span>Deployments</span></a>
-        <Link className={`side-link${team ? " active" : ""}`} href="/teams"><Icon name="users"/><span>Team</span></Link>
-      </nav>
-      <div className="sidebar-bottom"><div className="workspace-label">{team ? "TEAM MEMBERS" : "WORKSPACE OWNER"}</div><div className="member-list">{members.slice(0, 5).map((member) => <div className="member-row" key={member.id}><span className="member-avatar">{member.name[0]}</span><span>{member.name}</span></div>)}{members.length > 5 && <small>+{members.length - 5} more</small>}</div>
-        <div className="sidebar-profile"><div className="avatar">{initial}</div><div className="profile-copy"><strong>{authLoading ? "Loading…" : user?.name}</strong><span>{user?.email}</span></div><button className="logout-button" title="Log out" onClick={logout}><Icon name="logout"/></button></div>
-      </div>
-    </aside>
+    <WorkspaceSidebar team={team} members={members} />
     <main className="dashboard-main">
       <header className="topbar"><div className="breadcrumb">{team ? "Team workspace" : "Private workspace"} <span>/</span> <b>Dashboard</b></div><div className="topbar-right"><span className="live-dot"/>{working ? "Saving changes…" : busy ? "Syncing workspace…" : "Workspace synced"}<div className="avatar small-avatar">{initial}</div></div></header>
       <div className="dashboard-content" id="overview">
@@ -164,7 +151,7 @@ export default function WorkspaceDashboard({ team }: { team?: Team }) {
           <article className="stat-card"><div className="stat-head"><span>Projects</span><span className="stat-icon amber"><Icon name="folder"/></span></div><div className="stat-value">{busy ? "—" : projects.length}</div><div className="stat-note">Active project spaces</div></article>
         </section>
 
-        {team && <section className="panel team-panel" aria-labelledby="team-members-title">
+        {team && <section className="panel team-panel" id="team-members" aria-labelledby="team-members-title">
           <div className="panel-heading"><div><h2 id="team-members-title">Team members</h2><p>Only accepted members can access this workspace.</p></div><button className="text-button" disabled={working || busy} onClick={() => void refresh()}>Refresh members</button></div>
           <ul className="team-members">{members.map((member) => <li key={member.id}><span className="member-avatar">{member.name[0]}</span><div><strong>{member.name}{member.id === team.ownerId && <span className="team-role">Owner</span>}</strong><small>{member.email}</small></div>{member.id !== team.ownerId && (owner || member.id === user?.id) && <button className="text-button" disabled={working} onClick={() => void removeMember(member)}>{member.id === user?.id ? "Leave team" : "Remove"}</button>}</li>)}</ul>
           {owner && <form className="team-invite-form workspace-form" onSubmit={inviteMember}><label>Invite a registered user<input name="email" type="email" required maxLength={254} placeholder="teammate@example.com"/></label><button className="primary-compact" disabled={working}>Send invitation</button></form>}
