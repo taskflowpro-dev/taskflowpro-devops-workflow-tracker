@@ -1,4 +1,6 @@
 export type User = { id: number; name: string; email: string };
+export type Team = { id: number; name: string; ownerId: number; memberCount: number };
+export type TeamInvitation = { id: number; teamId: number; teamName: string; invitedByName: string };
 export type AuthResponse = { token: string; tokenType: string; expiresIn: number; user: User };
 
 const TOKEN_KEY = "taskflow.access-token";

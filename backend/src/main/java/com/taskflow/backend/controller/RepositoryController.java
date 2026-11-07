@@ -3,6 +3,7 @@ package com.taskflow.backend.controller;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import com.taskflow.backend.service.GitHubRepositoryAnalyzer;
+import com.taskflow.backend.service.WorkspaceAccess;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -23,19 +24,22 @@ public class RepositoryController {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final GitHubRepositoryAnalyzer analyzer;
+    private final WorkspaceAccess access;
 
-    public RepositoryController(JdbcTemplate jdbc, ObjectMapper mapper, GitHubRepositoryAnalyzer analyzer) {
+    public RepositoryController(JdbcTemplate jdbc, ObjectMapper mapper, GitHubRepositoryAnalyzer analyzer, WorkspaceAccess access) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.analyzer = analyzer;
+        this.access = access;
     }
 
     @GetMapping
-    public List<Map<String, Object>> repositories(@AuthenticationPrincipal Jwt jwt) {
+    public List<Map<String, Object>> repositories(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Long teamId) {
+        WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
         return jdbc.query("""
                 SELECT id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt",
                        last_analysis::text AS "analysisJson"
-                FROM tracked_repositories WHERE added_by = ? ORDER BY analyzed_at DESC
+                FROM tracked_repositories WHERE workspace_id = ? ORDER BY analyzed_at DESC
                 """, (row, index) -> {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", row.getLong("id"));
@@ -46,33 +50,37 @@ public class RepositoryController {
             result.put("analyzedAt", row.getTimestamp("analyzedAt").toInstant().toString());
             result.put("analysisJson", row.getString("analysisJson"));
             return withParsedAnalysis(result);
-        }, Long.valueOf(jwt.getSubject()));
+        }, scope.id());
     }
 
     @PostMapping("/analyze")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> analyze(@Valid @RequestBody AnalyzeRequest request, @AuthenticationPrincipal Jwt jwt) {
+    public Map<String, Object> analyze(@Valid @RequestBody AnalyzeRequest request, @AuthenticationPrincipal Jwt jwt,
+                                      @RequestParam(required = false) Long teamId) {
+        WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
         GitHubRepositoryAnalyzer.RepositoryRef ref = analyzer.parseUrl(request.url());
-        return analyzeAndSave(ref, Long.parseLong(jwt.getSubject()), null);
+        return analyzeAndSave(ref, scope, null);
     }
 
     @PostMapping("/{id}/refresh")
-    public Map<String, Object> refresh(@PathVariable long id, @AuthenticationPrincipal Jwt jwt) {
-        long userId = Long.parseLong(jwt.getSubject());
-        String url = jdbc.query("SELECT url FROM tracked_repositories WHERE id = ? AND added_by = ?",
-                row -> row.next() ? row.getString(1) : null, id, userId);
+    public Map<String, Object> refresh(@PathVariable long id, @AuthenticationPrincipal Jwt jwt,
+                                      @RequestParam(required = false) Long teamId) {
+        WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
+        String url = jdbc.query("SELECT url FROM tracked_repositories WHERE id = ? AND workspace_id = ?",
+                row -> row.next() ? row.getString(1) : null, id, scope.id());
         if (url == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
-        return analyzeAndSave(analyzer.parseUrl(url), userId, id);
+        return analyzeAndSave(analyzer.parseUrl(url), scope, id);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable long id, @AuthenticationPrincipal Jwt jwt) {
-        if (jdbc.update("DELETE FROM tracked_repositories WHERE id = ? AND added_by = ?", id, Long.valueOf(jwt.getSubject())) == 0)
+    public void delete(@PathVariable long id, @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Long teamId) {
+        WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
+        if (jdbc.update("DELETE FROM tracked_repositories WHERE id = ? AND workspace_id = ?", id, scope.id()) == 0)
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
     }
 
-    private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, long userId, Long repositoryId) {
+    private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, WorkspaceAccess.Scope scope, Long repositoryId) {
         Map<String, Object> analysis = analyzer.analyze(ref.canonicalUrl());
         String fullName = (String) analysis.get("fullName");
         String description = (String) analysis.get("description");
@@ -86,20 +94,20 @@ public class RepositoryController {
             List<Map<String, Object>> rows = jdbc.queryForList("""
                     UPDATE tracked_repositories SET url = ?, full_name = ?, description = ?, language = ?,
                         last_analysis = ?::jsonb, analyzed_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND added_by = ?
+                    WHERE id = ? AND workspace_id = ?
                     RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
-                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, repositoryId, userId);
+                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, repositoryId, scope.id());
             if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
             saved = rows.getFirst();
         } else {
             saved = jdbc.queryForMap("""
-                    INSERT INTO tracked_repositories(owner, repository, url, full_name, description, language, last_analysis, added_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)
-                    ON CONFLICT (added_by, owner, repository) DO UPDATE SET url = EXCLUDED.url, full_name = EXCLUDED.full_name,
+                    INSERT INTO tracked_repositories(owner, repository, url, full_name, description, language, last_analysis, added_by, workspace_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
+                    ON CONFLICT (workspace_id, owner, repository) DO UPDATE SET url = EXCLUDED.url, full_name = EXCLUDED.full_name,
                         description = EXCLUDED.description, language = EXCLUDED.language,
                         last_analysis = EXCLUDED.last_analysis, analyzed_at = CURRENT_TIMESTAMP
                     RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
-                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, userId);
+                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, scope.userId(), scope.id());
         }
 
         saved.put("analysis", analysis);

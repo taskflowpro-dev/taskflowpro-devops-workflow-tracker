@@ -41,7 +41,7 @@ class PrivateWorkspaceMigrationTests {
             jdbc.update("INSERT INTO tracked_repositories(owner,repository,url,full_name,last_analysis,added_by) VALUES ('example','app','https://github.com/example/app','example/app','{}',?)", alice);
 
             Flyway.configure().dataSource(dataSource).schemas(schema).defaultSchema(schema)
-                    .locations("filesystem:../database/migrations").load().migrate();
+                    .locations("filesystem:../database/migrations").target("5").load().migrate();
 
             assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM tasks", Integer.class));
             assertEquals(bob, jdbc.queryForObject("SELECT created_by FROM tasks WHERE id = ?", Long.class, bobTask));
