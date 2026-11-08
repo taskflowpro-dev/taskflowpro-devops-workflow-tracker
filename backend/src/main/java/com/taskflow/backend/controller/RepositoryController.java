@@ -6,6 +6,7 @@ import com.taskflow.backend.service.GitHubRepositoryAnalyzer;
 import com.taskflow.backend.service.WorkspaceAccess;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,9 +38,10 @@ public class RepositoryController {
     public List<Map<String, Object>> repositories(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Long teamId) {
         WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
         return jdbc.query("""
-                SELECT id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt",
-                       last_analysis::text AS "analysisJson"
-                FROM tracked_repositories WHERE workspace_id = ? ORDER BY analyzed_at DESC
+                SELECT r.id, r.url, r.full_name AS "fullName", r.description, r.language, r.analyzed_at AS "analyzedAt",
+                       r.project_id AS "projectId", p.name AS "projectName", r.last_analysis::text AS "analysisJson"
+                FROM tracked_repositories r LEFT JOIN projects p ON p.id = r.project_id
+                WHERE r.workspace_id = ? ORDER BY r.analyzed_at DESC
                 """, (row, index) -> {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", row.getLong("id"));
@@ -48,6 +50,8 @@ public class RepositoryController {
             result.put("description", row.getString("description"));
             result.put("language", row.getString("language") == null ? "Not detected" : row.getString("language"));
             result.put("analyzedAt", row.getTimestamp("analyzedAt").toInstant().toString());
+            result.put("projectId", row.getObject("projectId") == null ? null : row.getLong("projectId"));
+            result.put("projectName", row.getString("projectName"));
             result.put("analysisJson", row.getString("analysisJson"));
             return withParsedAnalysis(result);
         }, scope.id());
@@ -80,11 +84,42 @@ public class RepositoryController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
     }
 
+    @PutMapping("/{id}/project")
+    public Map<String, Object> linkProject(@PathVariable long id, @Valid @RequestBody ProjectLinkRequest request,
+                                           @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Long teamId) {
+        WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
+        if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM projects WHERE id = ? AND workspace_id = ?)",
+                Boolean.class, request.projectId(), scope.id())))
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project was not found in this workspace.");
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                UPDATE tracked_repositories SET project_id = ? WHERE id = ? AND workspace_id = ?
+                RETURNING id, project_id AS "projectId"
+                """, request.projectId(), id, scope.id());
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
+        Map<String, Object> result = rows.getFirst();
+        result.put("projectName", jdbc.queryForObject("SELECT name FROM projects WHERE id = ?", String.class, request.projectId()));
+        return result;
+    }
+
     private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, WorkspaceAccess.Scope scope, Long repositoryId) {
         Map<String, Object> analysis = analyzer.analyze(ref.canonicalUrl());
         String fullName = (String) analysis.get("fullName");
         String description = (String) analysis.get("description");
         String language = "Not detected".equals(analysis.get("language")) ? null : (String) analysis.get("language");
+        Long linkedProjectId = repositoryId == null
+                ? jdbc.query("SELECT project_id FROM tracked_repositories WHERE workspace_id = ? AND owner = ? AND repository = ?",
+                    rs -> rs.next() && rs.getObject(1) != null ? rs.getLong(1) : null, scope.id(), ref.owner(), ref.name())
+                : jdbc.query("SELECT project_id FROM tracked_repositories WHERE id = ? AND workspace_id = ?",
+                    rs -> rs.next() && rs.getObject(1) != null ? rs.getLong(1) : null, repositoryId, scope.id());
+        if (linkedProjectId == null) {
+            String projectName = fullName.substring(0, Math.min(100, fullName.length()));
+            jdbc.update("""
+                    INSERT INTO projects(name, description, created_by, workspace_id) VALUES (?, ?, ?, ?)
+                    ON CONFLICT (workspace_id, name) DO NOTHING
+                    """, projectName, description == null ? "" : description, scope.userId(), scope.id());
+            linkedProjectId = jdbc.queryForObject("SELECT id FROM projects WHERE workspace_id = ? AND name = ?",
+                    Long.class, scope.id(), projectName);
+        }
         String analysisJson;
         try { analysisJson = mapper.writeValueAsString(analysis); }
         catch (JacksonException exception) { throw new IllegalStateException("Could not store repository analysis.", exception); }
@@ -93,23 +128,27 @@ public class RepositoryController {
         if (repositoryId != null) {
             List<Map<String, Object>> rows = jdbc.queryForList("""
                     UPDATE tracked_repositories SET url = ?, full_name = ?, description = ?, language = ?,
-                        last_analysis = ?::jsonb, analyzed_at = CURRENT_TIMESTAMP
+                        last_analysis = ?::jsonb, analyzed_at = CURRENT_TIMESTAMP, project_id = COALESCE(project_id, ?)
                     WHERE id = ? AND workspace_id = ?
-                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
-                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, repositoryId, scope.id());
+                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt", project_id AS "projectId"
+                    """, ref.canonicalUrl(), fullName, description, language, analysisJson, linkedProjectId, repositoryId, scope.id());
             if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository was not found.");
             saved = rows.getFirst();
         } else {
             saved = jdbc.queryForMap("""
-                    INSERT INTO tracked_repositories(owner, repository, url, full_name, description, language, last_analysis, added_by, workspace_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)
+                    INSERT INTO tracked_repositories(owner, repository, url, full_name, description, language, last_analysis, added_by, workspace_id, project_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
                     ON CONFLICT (workspace_id, owner, repository) DO UPDATE SET url = EXCLUDED.url, full_name = EXCLUDED.full_name,
                         description = EXCLUDED.description, language = EXCLUDED.language,
-                        last_analysis = EXCLUDED.last_analysis, analyzed_at = CURRENT_TIMESTAMP
-                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt"
-                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, scope.userId(), scope.id());
+                        last_analysis = EXCLUDED.last_analysis, analyzed_at = CURRENT_TIMESTAMP,
+                        project_id = COALESCE(tracked_repositories.project_id, EXCLUDED.project_id)
+                    RETURNING id, url, full_name AS "fullName", description, language, analyzed_at AS "analyzedAt", project_id AS "projectId"
+                    """, ref.owner(), ref.name(), ref.canonicalUrl(), fullName, description, language, analysisJson, scope.userId(), scope.id(), linkedProjectId);
         }
 
+        Long projectId = ((Number) saved.get("projectId")).longValue();
+        String savedProjectName = jdbc.queryForObject("SELECT name FROM projects WHERE id = ?", String.class, projectId);
+        saved.put("projectName", savedProjectName);
         saved.put("analysis", analysis);
         return saved;
     }
@@ -123,4 +162,5 @@ public class RepositoryController {
     }
 
     public record AnalyzeRequest(@NotBlank @Size(max = 300) String url) { }
+    public record ProjectLinkRequest(@NotNull Long projectId) { }
 }

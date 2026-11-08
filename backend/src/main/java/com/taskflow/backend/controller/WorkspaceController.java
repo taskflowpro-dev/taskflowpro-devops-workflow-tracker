@@ -35,8 +35,10 @@ public class WorkspaceController {
     public List<Map<String, Object>> projects(@AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) Long teamId) {
         WorkspaceAccess.Scope scope = access.resolve(jwt, teamId);
         return jdbc.queryForList("""
-                SELECT p.id, p.name, p.description, COUNT(t.id) AS "taskCount", p.created_at AS "createdAt"
+                SELECT p.id, p.name, p.description, COUNT(DISTINCT t.id) AS "taskCount", p.created_at AS "createdAt",
+                       COUNT(DISTINCT r.id) AS "repositoryCount", MAX(r.full_name) AS "repositoryName", MAX(r.url) AS "repositoryUrl"
                 FROM projects p LEFT JOIN tasks t ON t.project = p.name AND t.workspace_id = p.workspace_id
+                LEFT JOIN tracked_repositories r ON r.project_id = p.id AND r.workspace_id = p.workspace_id
                 WHERE p.workspace_id = ?
                 GROUP BY p.id ORDER BY p.name
                 """, scope.id());

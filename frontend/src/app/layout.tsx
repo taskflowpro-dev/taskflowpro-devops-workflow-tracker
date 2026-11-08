@@ -3,8 +3,8 @@ import { AuthProvider } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TaskFlow Pro — Work, in flow",
-  description: "A focused workspace for moving work forward.",
+  title: "TaskFlow Pro — GitHub project intelligence",
+  description: "Understand GitHub repositories, manage projects, and organize engineering follow-up.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

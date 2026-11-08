@@ -2,6 +2,7 @@ name: taskflow-pro
 
 services:
   db:
+    container_name: tf-database
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-taskflow_db}
@@ -19,10 +20,11 @@ services:
       - backend
 
   api:
-    image: ${API_IMAGE:-taskflow-pro-api:local}
+    container_name: tf-backend
+    image: ${API_IMAGE:-tf-backend:local}
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: backend/Dockerfile.backend
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-taskflow_db}
       DATABASE_USERNAME: ${DATABASE_USERNAME:-taskflow_app}
@@ -30,6 +32,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     ports:
       - "${API_PORT:-8081}:8081"
     depends_on:
@@ -45,10 +48,11 @@ services:
       - backend
 
   web:
-    image: ${WEB_IMAGE:-taskflow-pro-web:local}
+    container_name: tf-frontend
+    image: ${WEB_IMAGE:-tf-frontend:local}
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081}
     ports:

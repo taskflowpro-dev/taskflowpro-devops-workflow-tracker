@@ -28,3 +28,6 @@ app:
     expiration: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
+
+github:
+  token: ${GITHUB_TOKEN:}
