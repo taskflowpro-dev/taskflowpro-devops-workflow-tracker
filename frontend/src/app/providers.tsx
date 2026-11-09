@@ -4,7 +4,12 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, clearToken, getToken, type User } from "@/lib/auth";
 
-type AuthContextValue = { user: User | null; loading: boolean; logout: () => void; refresh: () => Promise<void> };
+type AuthContextValue = {
+  user: User | null;
+  loading: boolean;
+  logout: () => void;
+  refresh: () => Promise<void>;
+};
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -16,9 +21,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function refresh() {
     const token = getToken();
-    if (!token) { setUser(null); return; }
-    try { setUser(await api<User>("/api/users/me", {}, true)); }
-    catch { clearToken(); setUser(null); }
+    if (!token) {
+      setUser(null);
+      return;
+    }
+    try {
+      setUser(await api<User>("/api/users/me", {}, true));
+    } catch {
+      clearToken();
+      setUser(null);
+    }
   }
 
   useEffect(() => {
@@ -31,9 +43,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user && publicRoute) router.replace("/dashboard");
   }, [loading, user, publicRoute, router]);
 
-  function logout() { clearToken(); setUser(null); router.replace("/login"); }
+  useEffect(() => {
+    if (!user) {
+      delete document.documentElement.dataset.compact;
+      delete document.documentElement.dataset.reduceMotion;
+      return;
+    }
+    let live = true;
+    api<{ compactMode: boolean; reduceMotion: boolean }>(
+      "/api/intelligence/preferences",
+      {},
+      true,
+    )
+      .then((value) => {
+        if (live) {
+          document.documentElement.dataset.compact = String(value.compactMode);
+          document.documentElement.dataset.reduceMotion = String(
+            value.reduceMotion,
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [user]);
 
-  return <AuthContext.Provider value={{ user, loading, logout, refresh }}>{children}</AuthContext.Provider>;
+  function logout() {
+    clearToken();
+    setUser(null);
+    router.replace("/login");
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, loading, logout, refresh }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

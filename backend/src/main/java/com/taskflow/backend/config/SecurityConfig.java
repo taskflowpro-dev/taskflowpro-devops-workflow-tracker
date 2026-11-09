@@ -1,6 +1,8 @@
 package com.taskflow.backend.config;
 
 import com.taskflow.backend.security.CustomUserDetailsService;
+import com.taskflow.backend.security.ApiRateLimitFilter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.OctetSequenceKey;
@@ -78,7 +80,8 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, DaoAuthenticationProvider provider) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        http.addFilterAfter(new ApiRateLimitFilter(), BearerTokenAuthenticationFilter.class)
+                .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(provider)

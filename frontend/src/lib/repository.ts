@@ -26,9 +26,26 @@ export type RepositoryCheck = {
   recommendation?: string;
 };
 
-export type RepositoryCommit = { sha: string; message: string; author: string; date: string; url: string };
-export type RepositoryContributor = { login: string; contributions: number; url: string };
-export type RepositoryRun = { name: string; status: string; conclusion: string; branch: string; url: string; updatedAt: string };
+export type RepositoryCommit = {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  url: string;
+};
+export type RepositoryContributor = {
+  login: string;
+  contributions: number;
+  url: string;
+};
+export type RepositoryRun = {
+  name: string;
+  status: string;
+  conclusion: string;
+  branch: string;
+  url: string;
+  updatedAt: string;
+};
 
 export type RepositoryAnalysis = {
   schemaVersion?: number;
@@ -48,9 +65,30 @@ export type RepositoryAnalysis = {
   archived?: boolean;
   fork?: boolean;
   topics: string[];
-  readme?: { found: boolean; title: string; excerpt: string; sections: string[] };
+  readme?: {
+    found: boolean;
+    title: string;
+    excerpt: string;
+    sections: string[];
+  };
   languages?: { name: string; bytes: number; percentage: number }[];
   techStack?: string[];
+  buildProfiles?: {
+    directory: string;
+    manifest: string;
+    ecosystem: string;
+    framework: string;
+    runtime: string;
+    runtimeEstimated?: boolean;
+    scripts: string[];
+    inspected: boolean;
+  }[];
+  configurationEvidence?: {
+    path: string;
+    kind: string;
+    summary: string;
+    inspected: boolean;
+  }[];
   structure?: {
     rootFiles: string[];
     topDirectories: string[];
@@ -76,7 +114,9 @@ export type RepositoryAnalysis = {
   activity?: {
     recentCommits: RepositoryCommit[];
     contributors: RepositoryContributor[];
-    latestRelease: { name: string; tag: string; publishedAt: string; url: string } | Record<string, never>;
+    latestRelease:
+      | { name: string; tag: string; publishedAt: string; url: string }
+      | Record<string, never>;
     workflowRuns: RepositoryRun[];
     latestRun?: RepositoryRun | Record<string, never>;
     commitCount: number;
@@ -87,10 +127,32 @@ export type RepositoryAnalysis = {
   checks: RepositoryCheck[];
   suggestions: RepositorySuggestion[];
   issues: RepositoryIssue[];
-  pullRequests?: { number: number; title: string; url: string; draft: boolean; createdAt: string; updatedAt: string; user: string }[];
+  pullRequests?: {
+    number: number;
+    title: string;
+    url: string;
+    draft: boolean;
+    createdAt: string;
+    updatedAt: string;
+    user: string;
+  }[];
   latestRun?: RepositoryRun | null;
-  score?: { value: number; label: string; present: number; total: number; explanation: string };
-  coverage?: { files: number; directories: number; treeTruncated: boolean; inspectedWorkflowFiles: string[]; readmeFound: boolean; sourceArchiveScanned?: boolean; note: string };
+  score?: {
+    value: number;
+    label: string;
+    present: number;
+    total: number;
+    explanation: string;
+  };
+  coverage?: {
+    files: number;
+    directories: number;
+    treeTruncated: boolean;
+    inspectedWorkflowFiles: string[];
+    readmeFound: boolean;
+    sourceArchiveScanned?: boolean;
+    note: string;
+  };
   summary: string;
   analyzedAt?: string;
 };

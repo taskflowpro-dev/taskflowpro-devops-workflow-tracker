@@ -1,6 +1,6 @@
 # TaskFlow Pro
 
-A visual portfolio for understanding GitHub projects, reviewing repository health and delivery activity, and organizing the follow-up work for each project.
+An engineering intelligence workspace for understanding GitHub projects, planning DevOps improvements, generating reviewable delivery configurations, and tracking implementation with your team.
 
 ## Overview
 
@@ -10,15 +10,22 @@ TaskFlow Pro connects a Next.js dashboard, Spring Boot API, and PostgreSQL datab
 
 ### Run with Docker Compose
 
-Requirements: Docker Engine with the Compose plugin.
+Requirements:
 
-From PowerShell, start all three containers in the current terminal:
+- **Windows:** Git for Windows (Git Bash) and Docker Desktop configured for Linux containers.
+- **Ubuntu / Fedora:** Bash and Docker Engine with the Compose plugin.
 
-```powershell
-.\run.ps1
+For a first-time Fedora setup, run `bash ./setup-fedora.sh` as your normal user. It prompts for your sudo password, installs Docker Engine and Compose from Docker's official Fedora repository, enables the Docker service at boot, verifies the installation, and launches `run.sh`. It does not add your account to the Docker group; the launcher uses sudo when needed.
+
+On all three systems, run the same launcher from the project root. On Windows, open **Git Bash** in the repository folder. PowerShell is not required.
+
+```bash
+./run.sh
 ```
 
-The script starts Docker Desktop if needed, creates a root `.env` with generated local credentials on first run, builds the images, and starts PostgreSQL, the API, and the frontend. Press **Ctrl+C** in that terminal to stop the containers while keeping database data. Open `http://localhost:3000`; the API is available at `http://localhost:8081`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
+The script starts Docker Desktop on Windows or the `docker` systemd service on Linux when needed. On Linux, it uses `sudo` for Docker commands if your user cannot access the engine directly; you may be prompted for your administrator password. Docker must already be installed; the script does not install packages or change user groups. You can also invoke it with `bash ./run.sh`.
+
+On all supported platforms, it creates a root `.env` with generated local credentials on first run, builds the images, and starts PostgreSQL, the API, and the frontend. Existing `.env` files are kept unchanged. Press **Ctrl+C** in that terminal to stop the containers while keeping database data. Open `http://localhost:3000`; the API is available at `http://localhost:8081`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
 
 For manual Compose use, copy `.env.example` to `.env` and set `DATABASE_PASSWORD` and a `JWT_SECRET` of at least 32 characters. Start and stop the containers with:
 
@@ -44,7 +51,7 @@ cd taskflowpro-devops-workflow-tracker
 
 - Java 25 LTS
 - PostgreSQL with a `taskflow_db` database and an application user
-- Node.js 20 or newer
+- Node.js 22.12+ (22 LTS recommended; see frontend/package.json for supported versions)
 
 ### Configure and start the backend
 
@@ -120,6 +127,12 @@ Public repositories work without a GitHub credential. Unauthenticated requests u
 
 Choose or change the project's link from the saved report. Add a recommendation or convert an open issue into a task; it will appear in that project's task board. Projects remain useful for repositories without imported tasks, and the task board supports regular manually created work too.
 
+## Engineering platform
+
+The redesigned workspace includes repository-aware roadmaps, persistent implementation guides, workflow and Docker configuration drafts, deployment advisory, engineering evidence views, and saved conversations. All views use authenticated backend APIs and PostgreSQL records. Real AI chat is available through an optional server-configured Ollama model; without one, the assistant explicitly uses rules-based repository guidance.
+
+See [Engineering platform setup, APIs, security and validation](docs/engineering-platform.md) and the [implementation record](docs/product-transformation.md). Refresh saved repository reports after upgrading to detect inspected build profiles. Private repositories accessed through a shared server token now require an explicit `GITHUB_PRIVATE_WORKSPACE_GRANTS` entry for the selected workspace.
+
 ## Suggested Workflow
 
 1. Connect a GitHub repository and review its project report.
@@ -131,14 +144,17 @@ Choose or change the project's link from the saved report. Add a recommendation 
 
 ## Repository Structure
 
-The repository is currently being initialized. Suggested directories include:
+The application is organized as follows:
 
 ```text
 .
-├── .github/       # Issue templates, pull request templates, and workflows
-├── docs/          # Workflow and operational documentation
-├── workflows/     # DevOps workflow definitions
-└── README.md      # Project documentation
+├── backend/                # Spring Boot API, security, intelligence services and tests
+├── frontend/               # Next.js workspace UI, design system and browser tests
+├── database/migrations/    # Versioned PostgreSQL Flyway schema migrations
+├── docs/                   # Architecture, API contracts and operational guidance
+├── compose.yaml            # PostgreSQL, API and frontend containers
+├── run.sh                  # Shared Windows (Git Bash), Ubuntu and Fedora launcher
+└── setup-fedora.sh          # First-time Fedora Docker setup
 ```
 
 ## Contributing
