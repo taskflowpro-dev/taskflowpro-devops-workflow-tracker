@@ -1,10 +1,10 @@
 # TaskFlow Pro
 
-A centralized workspace for tracking DevOps workflows, tasks, releases, and operational improvements.
+A visual portfolio for understanding GitHub projects, reviewing repository health and delivery activity, and organizing the follow-up work for each project.
 
 ## Overview
 
-TaskFlow Pro gives each account a private workspace for organizing work, with Spring Boot authentication, PostgreSQL persistence, and a Next.js dashboard.
+TaskFlow Pro connects a Next.js dashboard, Spring Boot API, and PostgreSQL database. GitHub repositories and their saved analysis reports are the center of each workspace; projects group repositories and their follow-up tasks.
 
 ## Getting Started
 
@@ -12,23 +12,18 @@ TaskFlow Pro gives each account a private workspace for organizing work, with Sp
 
 Requirements: Docker Engine with the Compose plugin.
 
+From PowerShell, start all three containers in the current terminal:
+
 ```powershell
-Copy-Item .env.example .env
+.\run.ps1
 ```
 
-Edit the root `.env` and set `DATABASE_PASSWORD` and `JWT_SECRET`. `JWT_SECRET` must be at least 32 characters. `DATABASE_URL` uses `localhost` for local backend runs; Compose overrides it to use the `db` service inside Docker. Then build and start the stack:
+The script starts Docker Desktop if needed, creates a root `.env` with generated local credentials on first run, builds the images, and starts PostgreSQL, the API, and the frontend. Press **Ctrl+C** in that terminal to stop the containers while keeping database data. Open `http://localhost:3000`; the API is available at `http://localhost:8081`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
+
+For manual Compose use, copy `.env.example` to `.env` and set `DATABASE_PASSWORD` and a `JWT_SECRET` of at least 32 characters. Start and stop the containers with:
 
 ```powershell
-docker compose up --build -d
-docker compose ps
-```
-
-Open `http://localhost:3000`; the API is available at `http://localhost:8081`. To view logs, run `docker compose logs -f`; to stop the services while keeping database data, run `docker compose down`. Database files live in the `postgres_data` named volume. `docker compose down -v` also deletes that database volume.
-
-Start and stop the containers manually with:
-
-```powershell
-docker compose up -d       # Start the services
+docker compose up --build -d # Build and start the services
 docker compose stop        # Stop them; keep containers and database data
 docker compose start       # Start the stopped containers again
 docker compose down        # Stop and remove containers; keep database data
@@ -47,7 +42,7 @@ cd taskflowpro-devops-workflow-tracker
 
 ### Requirements
 
-- Java 21
+- Java 25 LTS
 - PostgreSQL with a `taskflow_db` database and an application user
 - Node.js 20 or newer
 
@@ -100,6 +95,8 @@ Workspace data endpoints accept an optional `teamId` query parameter. Without it
 
 Migration V6 adds explicit workspace IDs and assigns all existing records to their owner's personal workspace. It does not move any personal data into teams. New teams start empty.
 
+Migration V7 links each saved repository report to its workspace project. Older reports remain available and can be linked from their report's project selector.
+
 ### Workspace checks
 
 The API isolation and migration tests require a dedicated PostgreSQL test database. They run only when `TEST_DATABASE_URL` is set; use a test database rather than an application database. From `backend/`:
@@ -115,16 +112,22 @@ The checks cover personal isolation, team invitations and acceptance, shared CRU
 
 ### Dashboard repository analysis
 
-From the authenticated dashboard, paste a public GitHub repository URL such as `https://github.com/owner/repository`. TaskFlow Pro saves the repository and analyzes its metadata, open issues, GitHub Actions workflows, and latest workflow run. The report checks for CI triggers, tests, linting, container builds, deployments, and security scanning, then suggests backlog tasks that can be added to the Kanban board. Private repositories are not supported until a GitHub credential integration is configured.
+From the authenticated dashboard, paste a repository URL such as `https://github.com/owner/repository`. The report is saved to PostgreSQL and linked to a project (a project is created automatically for a newly connected repository). It brings together repository metadata, languages and stack hints, the file tree, README outline, recent commits, contributors, open issues and pull requests, releases, and GitHub Actions runs.
+
+TaskFlow Pro also inspects a bounded source archive for text-file and line counts, test-file hints, TODO/FIXME/HACK markers, and dependency samples. It checks for evidence of CI, tests, linting, container builds, deployments, and security scanning, then recommends project follow-up tasks. The signal percentage describes which checks were detected; it is not a code-quality or security certification. Source files are inspected in memory and are not stored. Archive inspection is limited to 32 MB compressed, 24 MB expanded, 4,000 files, and 768 KB per file; generated, vendor, and binary content is skipped. A report explains when inspection is partial or unavailable.
+
+Public repositories work without a GitHub credential. Unauthenticated requests use GitHub's lower API rate limit. To analyze private repositories or increase that limit, configure a fine-grained GitHub token with read access to repository metadata, contents, issues, pull requests, and Actions. Put it in the root `.env` as `GITHUB_TOKEN=...`, then recreate the backend container with `docker compose up --build -d api`. Keep the token out of source control and do not share it in screenshots or logs.
+
+Choose or change the project's link from the saved report. Add a recommendation or convert an open issue into a task; it will appear in that project's task board. Projects remain useful for repositories without imported tasks, and the task board supports regular manually created work too.
 
 ## Suggested Workflow
 
-1. Create or update a task for the work being planned.
-2. Document the workflow, dependencies, and acceptance criteria.
-3. Implement changes in a feature branch.
-4. Run the relevant checks and validation steps.
-5. Open a pull request for review.
-6. Record deployment or operational follow-up notes.
+1. Connect a GitHub repository and review its project report.
+2. Link it to the project space where its ongoing work belongs.
+3. Turn relevant recommendations or GitHub issues into project tasks.
+4. Track task progress and ownership in the workspace.
+5. Review repository activity, pull requests, and Actions results as the code changes.
+6. Record deployment or operational follow-up notes when useful.
 
 ## Repository Structure
 

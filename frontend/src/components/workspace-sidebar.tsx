@@ -10,16 +10,16 @@ type NavItem = { id: string; label: string; icon: React.ComponentProps<typeof Ic
 
 const privateItems: NavItem[] = [
   { id: "overview", label: "Dashboard", icon: "grid" },
-  { id: "tasks", label: "My Tasks", icon: "check" },
-  { id: "projects", label: "Projects", icon: "folder" },
   { id: "repository-analysis", label: "Repository", icon: "spark" },
+  { id: "projects", label: "Projects", icon: "folder" },
+  { id: "tasks", label: "Follow-up tasks", icon: "check" },
   { id: "deployments", label: "Deployments", icon: "arrow" },
 ];
 const teamItems: NavItem[] = [
   { id: "overview", label: "Dashboard", icon: "grid" },
-  { id: "tasks", label: "Tasks", icon: "check" },
-  { id: "projects", label: "Projects", icon: "folder" },
   { id: "repository-analysis", label: "Repository", icon: "spark" },
+  { id: "projects", label: "Projects", icon: "folder" },
+  { id: "tasks", label: "Follow-up tasks", icon: "check" },
   { id: "deployments", label: "Deployments", icon: "arrow" },
   { id: "team-members", label: "Members", icon: "users" },
   { id: "all-teams", label: "All teams", icon: "folder", href: "/teams#all-teams" },
