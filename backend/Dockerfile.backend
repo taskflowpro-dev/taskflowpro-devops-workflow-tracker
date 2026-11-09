@@ -31,6 +31,9 @@ FROM eclipse-temurin:25-jre
 
 WORKDIR /app/backend
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy generated JAR
 COPY --from=build /app/target/*.jar app.jar
 

@@ -75,8 +75,8 @@ class PrivateWorkspaceIntegrationTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].title").value("Alice task"));
         mvc.perform(get("/api/projects").with(as(alice)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].taskCount").value(1));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[?(@.name == 'Platform')].taskCount").value(org.hamcrest.Matchers.contains(1)));
         mvc.perform(get("/api/projects").with(as(bob)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].taskCount").value(2));
         mvc.perform(get("/api/deployments").with(as(alice)))

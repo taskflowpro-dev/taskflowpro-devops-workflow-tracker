@@ -31,3 +31,9 @@ app:
 
 github:
   token: ${GITHUB_TOKEN:}
+  private-workspace-grants: ${GITHUB_PRIVATE_WORKSPACE_GRANTS:}
+
+ai:
+  ollama:
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_MODEL:}

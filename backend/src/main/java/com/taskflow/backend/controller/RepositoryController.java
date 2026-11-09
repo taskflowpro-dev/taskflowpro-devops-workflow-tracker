@@ -102,6 +102,7 @@ public class RepositoryController {
     }
 
     private Map<String, Object> analyzeAndSave(GitHubRepositoryAnalyzer.RepositoryRef ref, WorkspaceAccess.Scope scope, Long repositoryId) {
+        analyzer.assertAccess(ref, scope.id());
         Map<String, Object> analysis = analyzer.analyze(ref.canonicalUrl());
         String fullName = (String) analysis.get("fullName");
         String description = (String) analysis.get("description");

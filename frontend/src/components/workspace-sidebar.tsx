@@ -1,111 +1,174 @@
 "use client";
-
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ChevronsUpDown, Menu, X } from "lucide-react";
 import { useAuth } from "@/app/providers";
 import { Brand, Icon } from "@/components/brand";
-import type { Team, User } from "@/lib/auth";
+import { api, type Team, type User } from "@/lib/auth";
+import { navigation, viewFromHash } from "@/lib/navigation";
 
-type NavItem = { id: string; label: string; icon: React.ComponentProps<typeof Icon>["name"]; href?: string };
-
-const privateItems: NavItem[] = [
-  { id: "overview", label: "Dashboard", icon: "grid" },
-  { id: "repository-analysis", label: "Repository", icon: "spark" },
-  { id: "projects", label: "Projects", icon: "folder" },
-  { id: "tasks", label: "Follow-up tasks", icon: "check" },
-  { id: "deployments", label: "Deployments", icon: "arrow" },
-];
-const teamItems: NavItem[] = [
-  { id: "overview", label: "Dashboard", icon: "grid" },
-  { id: "repository-analysis", label: "Repository", icon: "spark" },
-  { id: "projects", label: "Projects", icon: "folder" },
-  { id: "tasks", label: "Follow-up tasks", icon: "check" },
-  { id: "deployments", label: "Deployments", icon: "arrow" },
-  { id: "team-members", label: "Members", icon: "users" },
-  { id: "all-teams", label: "All teams", icon: "folder", href: "/teams#all-teams" },
-  { id: "invitations", label: "Invitations", icon: "users", href: "/teams#invitations" },
-  { id: "create-team", label: "Create a team", icon: "folder", href: "/teams#create-team" },
-];
-
-export default function WorkspaceSidebar({ team, teams = [], teamsPage = false, members = [], contentReady = true }: { team?: Team; teams?: Team[]; teamsPage?: boolean; members?: User[]; contentReady?: boolean }) {
+export default function WorkspaceSidebar({
+  team,
+  teams: suppliedTeams,
+  teamsPage = false,
+  members = [],
+}: {
+  team?: Team;
+  teams?: Team[];
+  teamsPage?: boolean;
+  members?: User[];
+  contentReady?: boolean;
+}) {
   const { user, logout } = useAuth();
-  const isTeam = teamsPage || Boolean(team);
-  const items = isTeam ? teamItems : privateItems;
-  const defaultActiveId = teamsPage ? "all-teams" : "overview";
-  const targetTeam = team ?? teams[0];
-  const [expanded, setExpanded] = useState(true);
-  const [activeId, setActiveId] = useState(defaultActiveId);
-
+  const router = useRouter();
+  const [teams, setTeams] = useState<Team[]>(suppliedTeams ?? []);
+  const [active, setActive] = useState("overview");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    if (!contentReady) return;
-    const syncHash = () => {
-      const id = window.location.hash.slice(1);
-      setActiveId(items.some((item) => item.id === id) ? id : defaultActiveId);
-      if (items.some((item) => item.id === id)) document.getElementById(id)?.scrollIntoView({ block: "start" });
-    };
-    queueMicrotask(syncHash);
-    window.addEventListener("hashchange", syncHash);
-    window.addEventListener("popstate", syncHash);
+    const media = window.matchMedia("(max-width: 650px)");
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    if (suppliedTeams) return;
+    let live = true;
+    api<Team[]>("/api/teams", {}, true)
+      .then((value) => {
+        if (live) setTeams(value);
+      })
+      .catch(() => {});
     return () => {
-      window.removeEventListener("hashchange", syncHash);
-      window.removeEventListener("popstate", syncHash);
+      live = false;
     };
-  }, [items, contentReady, defaultActiveId]);
-
-  return <aside className="sidebar workspace-sidebar">
-    <div className="sidebar-brand"><Brand /></div>
-    <div className="workspace-label">WORKSPACES</div>
-    <nav className="workspace-tree" aria-label="Workspace navigation">
-      {([false, true] as const).map((teamRoot) => {
-        const selected = teamRoot === isTeam;
-        const open = selected && expanded;
-        const label = teamRoot ? "Team" : "Private workspace";
-        const panelId = teamRoot ? "team-navigation" : "private-navigation";
-        return <div className="workspace-branch t-acc" data-open={open} data-selected={selected} key={panelId}>
-          <Link className="workspace-root t-acc-head" href={teamRoot ? "/teams" : "/dashboard"}
-            aria-label={label} aria-expanded={open} aria-controls={selected ? panelId : undefined}
-            onClick={(event) => {
-              if (selected && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-                event.preventDefault(); setExpanded((value) => !value);
+  }, [suppliedTeams]);
+  useEffect(() => {
+    const sync = () => {
+      setActive(teamsPage ? "teams" : viewFromHash(window.location.hash));
+      setMobileOpen(false);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [teamsPage]);
+  const base = team ? `/teams/${team.id}` : "/dashboard";
+  return (
+    <>
+      <button
+        className="mobile-nav-toggle icon-button"
+        aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+        aria-expanded={mobileOpen}
+        onClick={() => setMobileOpen(!mobileOpen)}
+      >
+        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+      {mobileOpen && (
+        <button
+          className="nav-overlay"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside
+        inert={isMobile && !mobileOpen}
+        className={`sidebar workspace-sidebar ${mobileOpen ? "mobile-open" : ""}`}
+      >
+        <a
+          href="/dashboard"
+          className="sidebar-brand"
+          aria-label="TaskFlow Pro home"
+        >
+          <Brand />
+        </a>
+        <label className="workspace-switcher">
+          <span className="workspace-switcher-icon">
+            <Icon name={team ? "users" : "boxes"} />
+          </span>
+          <span className="workspace-switcher-copy">
+            <small>WORKSPACE</small>
+            <select
+              aria-label="Switch workspace"
+              value={team?.id ?? "personal"}
+              onChange={(event) =>
+                router.push(
+                  event.target.value === "personal"
+                    ? "/dashboard"
+                    : `/teams/${event.target.value}`,
+                )
               }
-            }}>
-            <span className="workspace-root-node"><Icon name={teamRoot ? "users" : "grid"}/></span>
-            <span className="workspace-nav-label">{label}</span>
-            <span className="t-acc-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 6.5L8 10.5L12 6.5"/></svg></span>
-          </Link>
-          {selected && <div className="t-acc-panel" id={panelId} inert={!open}>
-            <div className="t-acc-panel-inner">
-              {isTeam && <div className="workspace-team-name" title={targetTeam?.name ?? "Create or join a team to use the shared workspace"}>{targetTeam?.name ?? "Create or join a team to start"}</div>}
-              <ul className="workspace-leaves">
-                <svg className="workspace-paths" viewBox={`0 0 34 ${items.length * 44}`} preserveAspectRatio="none" aria-hidden="true">
-                  {items.map((item, index) => {
-                    const y = index * 44 + 22;
-                    return <path key={item.id} className="workspace-path" d={`M 8 0 C 8 ${y - 8} 12 ${y} 30 ${y}`} />;
-                  })}
-                  {items.map((item, index) => item.id === activeId && <path key={`active-${item.id}`} className="workspace-path-active" pathLength="1" d={`M 8 0 C 8 ${index * 44 + 14} 12 ${index * 44 + 22} 30 ${index * 44 + 22}`} />)}
-                </svg>
-                {items.map((item) => {
-                  const href = item.href ? (teamsPage ? `#${item.id}` : item.href)
-                    : teamsPage ? (targetTeam ? `/teams/${targetTeam.id}#${item.id}` : undefined) : `#${item.id}`;
-                  const content = <>
-                    <span className="workspace-leaf-node" aria-hidden="true"/>
-                    <Icon name={item.icon}/><span className="workspace-nav-label">{item.label}</span>
-                  </>;
-                  return <li key={item.id}>{href ? <Link className={`workspace-leaf${item.id === activeId ? " is-active" : ""}`} href={href}
-                    aria-label={item.label} aria-current={item.id === activeId ? "location" : undefined}
-                    title={item.label} onClick={(event) => {
-                      if (href.startsWith("#") && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) setActiveId(item.id);
-                    }}>{content}</Link> : <span className="workspace-leaf" role="link" aria-disabled="true" aria-label={item.label} title={`Create or join a team to open ${item.label}`}>{content}</span>}</li>;
-                })}
-              </ul>
+            >
+              <option value="personal">Personal workspace</option>
+              {(suppliedTeams ?? teams).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </span>
+          <ChevronsUpDown size={14} aria-hidden="true" />
+        </label>
+        <nav className="platform-nav" aria-label="Main navigation">
+          {navigation.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <div className="workspace-label">{group.label}</div>
+              {group.items.map((item) => {
+                const selected = active === item.id;
+                const href =
+                  item.id === "teams"
+                    ? "/teams#all-teams"
+                    : `${teamsPage ? "/dashboard" : base}#${item.id}`;
+                return (
+                  <a
+                    key={item.id}
+                    href={href}
+                    onClick={() => {
+                      setActive(item.id);
+                      setMobileOpen(false);
+                    }}
+                    className={`nav-link ${selected ? "is-active" : ""}`}
+                    aria-current={selected ? "page" : undefined}
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                    {item.id === "architect" && (
+                      <span className="nav-badge">AI</span>
+                    )}
+                  </a>
+                );
+              })}
             </div>
-          </div>}
-        </div>;
-      })}
-    </nav>
-    <div className="sidebar-bottom">
-      {members.length > 0 && <><div className="workspace-label">{team ? "TEAM MEMBERS" : "WORKSPACE OWNER"}</div><div className="member-list">{members.slice(0, 5).map((member) => <div className="member-row" key={member.id}><span className="member-avatar">{member.name[0]}</span><span>{member.name}</span></div>)}{members.length > 5 && <small>+{members.length - 5} more</small>}</div></>}
-      <div className="sidebar-profile"><div className="avatar">{user?.name?.trim().charAt(0).toUpperCase() ?? "U"}</div><div className="profile-copy"><strong>{user?.name}</strong><span>{user?.email}</span></div><button className="logout-button" aria-label="Log out" title="Log out" onClick={logout}><Icon name="logout"/></button></div>
-    </div>
-  </aside>;
+          ))}
+          {team && (
+            <a
+              className={`nav-link ${active === "team-members" ? "is-active" : ""}`}
+              href={`${base}#team-members`}
+            >
+              <Icon name="users" />
+              <span>Team members ({members.length})</span>
+            </a>
+          )}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-profile">
+            <div className="avatar">
+              {user?.name?.[0]?.toUpperCase() ?? "U"}
+            </div>
+            <a href={`${base}#account`} className="profile-copy">
+              <strong>{user?.name}</strong>
+              <span>{team ? "Team workspace" : "Personal account"}</span>
+            </a>
+            <button
+              className="icon-button"
+              aria-label="Sign out"
+              onClick={logout}
+            >
+              <Icon name="logout" />
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { Icon } from "@/components/brand";
 import WorkspaceSidebar from "@/components/workspace-sidebar";
+import WorkspaceTopbar from "@/components/workspace-topbar";
 import { api, type Team, type TeamInvitation } from "@/lib/auth";
 
 export default function TeamsPage() {
@@ -36,9 +37,6 @@ function TeamsHub() {
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { queueMicrotask(() => void refresh()); }, [refresh]);
-  useEffect(() => {
-    if (!loading && teams.length > 0 && !window.location.hash) router.replace(`/teams/${teams[0].id}`);
-  }, [loading, teams, router]);
 
   async function createTeam(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,9 +66,9 @@ function TeamsHub() {
   return <div className="dashboard-shell">
     <WorkspaceSidebar teamsPage teams={teams} contentReady={!loading} />
     <main className="dashboard-main">
-      <header className="topbar"><div className="breadcrumb">Workspaces <span>/</span> <b>Team</b></div><button className="text-button" disabled={working || loading} onClick={() => void refresh()}>Refresh teams</button></header>
+      <WorkspaceTopbar workspace="Workspaces" view="Teams" busy={working || loading} onRefresh={() => void refresh()}/>
       <div className="dashboard-content">
-        <div className="welcome-row"><div><div className="eyebrow">WORK TOGETHER</div><h1>Your teams</h1><p>Choose a shared workspace or create a team. Your personal work stays private.</p></div></div>
+        <div className="welcome-row"><div><h1>Your teams</h1><p>Choose a shared workspace or create a team. Your personal work stays private.</p></div></div>
         {error && <div className="workspace-error" role="alert">{error}</div>}
         {feedback && <p className="team-feedback" role="status">{feedback}</p>}
         {loading ? <p role="status">Loading teams and invitations…</p> : <>

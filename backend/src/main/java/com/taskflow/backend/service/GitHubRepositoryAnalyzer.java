@@ -51,6 +51,8 @@ public class GitHubRepositoryAnalyzer {
 
     private final ObjectMapper mapper;
     private final String githubToken;
+    @Value("${github.private-workspace-grants:}")
+    private String privateWorkspaceGrants = "";
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8))
             .followRedirects(HttpClient.Redirect.NEVER)
@@ -59,6 +61,17 @@ public class GitHubRepositoryAnalyzer {
     public GitHubRepositoryAnalyzer(ObjectMapper mapper, @Value("${github.token:}") String githubToken) {
         this.mapper = mapper;
         this.githubToken = githubToken == null ? "" : githubToken.trim();
+    }
+
+    /** A shared server token must not grant every registered user access to its private repositories. */
+    public void assertAccess(RepositoryRef ref, long workspaceId) {
+        if (githubToken.isBlank()) return;
+        JsonNode metadata = request("repos/" + ref.owner() + "/" + ref.name(), false);
+        if (!metadata.path("private").asBoolean(false)) return;
+        String grant = workspaceId + ":" + (ref.owner() + "/" + ref.name()).toLowerCase(Locale.ROOT);
+        boolean allowed = java.util.Arrays.stream(privateWorkspaceGrants.split(",")).map(String::trim)
+                .map(value -> value.toLowerCase(Locale.ROOT)).anyMatch(grant::equals);
+        if (!allowed) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository not found or not authorized for this workspace.");
     }
 
     /** Builds a broad, evidence-based report from GitHub's repository, tree, language, README,
@@ -110,6 +123,7 @@ public class GitHubRepositoryAnalyzer {
         }
 
         List<String> workflowNames = workflowPaths.stream().map(path -> path.substring(path.lastIndexOf('/') + 1)).toList();
+        enrichBuildProfiles(sourceScan, filePaths);
         StringBuilder workflowText = new StringBuilder();
         List<String> inspectedFiles = new ArrayList<>();
         for (String path : workflowPaths.stream().limit(8).toList()) {
@@ -139,7 +153,7 @@ public class GitHubRepositoryAnalyzer {
         String summary = summary(fullName, language, fileCount, score, workflowNames.size(), suggestions.size(), treeTruncated);
 
         Map<String, Object> analysis = new LinkedHashMap<>();
-        analysis.put("schemaVersion", 2);
+        analysis.put("schemaVersion", 3);
         analysis.put("fullName", fullName);
         analysis.put("url", repoInfo.get("url"));
         analysis.put("description", repoInfo.get("description"));
@@ -161,6 +175,8 @@ public class GitHubRepositoryAnalyzer {
         analysis.put("techStack", techStack);
         analysis.put("structure", structure);
         analysis.put("sourceScan", sourceScan);
+        analysis.put("buildProfiles", sourceScan.getOrDefault("buildProfiles", List.of()));
+        analysis.put("configurationEvidence", sourceScan.getOrDefault("configurationEvidence", List.of()));
         analysis.put("activity", activity);
         analysis.put("workflows", workflowNames);
         analysis.put("checks", checks);
@@ -183,10 +199,10 @@ public class GitHubRepositoryAnalyzer {
             URI uri = URI.create(value == null ? "" : value.trim());
             String[] parts = uri.getPath() == null ? new String[0] : uri.getPath().replaceAll("/$", "").split("/");
             if (!"https".equalsIgnoreCase(uri.getScheme()) || !"github.com".equalsIgnoreCase(uri.getHost())
-                    || uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null || parts.length != 3
+                    || uri.getUserInfo() != null || uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null || parts.length != 3
                     || !OWNER_OR_REPO.matcher(parts[1]).matches()) throw new IllegalArgumentException();
             String name = parts[2].replaceFirst("(?i)\\.git$", "");
-            if (!OWNER_OR_REPO.matcher(name).matches()) throw new IllegalArgumentException();
+            if (!OWNER_OR_REPO.matcher(name).matches() || List.of(".", "..").contains(name) || List.of(".", "..").contains(parts[1])) throw new IllegalArgumentException();
             return new RepositoryRef(parts[1], name, "https://github.com/" + parts[1] + "/" + name);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a GitHub repository URL like https://github.com/owner/repository.");
@@ -358,6 +374,8 @@ public class GitHubRepositoryAnalyzer {
         result.put("hackMarkers", 0);
         result.put("manifestFiles", List.of());
         result.put("dependencySamples", List.of());
+        result.put("buildProfiles", List.of());
+        result.put("configurationEvidence", List.of());
         try {
             URI archiveUri = URI.create("https://api.github.com/repos/" + ref.owner() + "/" + ref.name()
                     + "/zipball/" + encodePathSegment(branch));
@@ -402,11 +420,13 @@ public class GitHubRepositoryAnalyzer {
             boolean truncated = false;
             List<String> manifests = new ArrayList<>();
             List<String> dependencies = new ArrayList<>();
+            List<Map<String, Object>> profiles = new ArrayList<>();
+            List<Map<String, Object>> configurations = new ArrayList<>();
             try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(archive))) {
                 ZipEntry entry;
                 while ((entry = zip.getNextEntry()) != null) {
-                    if (entry.isDirectory()) continue;
                     if (++entries > MAX_ARCHIVE_FILES) { truncated = true; break; }
+                    if (entry.isDirectory()) continue;
                     String path = entry.getName();
                     String lower = path.toLowerCase(Locale.ROOT);
                     boolean inspect = !excludedSourcePath(lower) && isTextSourcePath(lower);
@@ -437,6 +457,16 @@ public class GitHubRepositoryAnalyzer {
                     fixme += markerCount(text, "FIXME");
                     hack += markerCount(text, "HACK");
                     String filename = lower.substring(lower.lastIndexOf('/') + 1);
+                    String relative = path.contains("/") ? path.substring(path.indexOf('/') + 1) : path;
+                    if (relative.matches("[A-Za-z0-9_./-]+") && !List.of(relative.split("/")).contains("..")) {
+                        if (profiles.size() < 20) inspectBuildProfile(relative, filename, text, profiles);
+                        if (configurations.size() < 40 && (filename.startsWith("dockerfile") || filename.equals("compose.yaml")
+                                || filename.equals("docker-compose.yml") || relative.startsWith(".github/workflows/"))) {
+                            configurations.add(Map.of("path", relative, "inspected", true,
+                                    "kind", filename.startsWith("dockerfile") ? "container" : relative.startsWith(".github/workflows/") ? "workflow" : "compose",
+                                    "summary", "Text inspected; presence does not establish successful execution."));
+                        }
+                    }
                     if (Set.of("package.json", "pom.xml", "build.gradle", "build.gradle.kts", "pyproject.toml", "requirements.txt", "go.mod", "cargo.toml", "gemfile", "composer.json").contains(filename)) {
                         manifests.add(path);
                         collectDependencySamples(filename, text, dependencies);
@@ -453,6 +483,8 @@ public class GitHubRepositoryAnalyzer {
             result.put("hackMarkers", hack);
             result.put("manifestFiles", manifests.stream().limit(40).toList());
             result.put("dependencySamples", dependencies.stream().distinct().limit(30).toList());
+            result.put("buildProfiles", profiles);
+            result.put("configurationEvidence", configurations);
             result.put("truncated", truncated);
             result.put("message", truncated ? "Source inspection reached a safety limit; metrics cover the portion scanned." : "Source text scanned; file contents are not stored.");
             return result;
@@ -474,7 +506,7 @@ public class GitHubRepositoryAnalyzer {
 
     private boolean isTextSourcePath(String path) {
         String file = path.substring(path.lastIndexOf('/') + 1);
-        return file.equals("dockerfile") || file.equals("makefile") || file.equals(".gitignore") || file.equals(".dockerignore")
+        return file.startsWith("dockerfile") || file.equals("makefile") || file.equals(".gitignore") || file.equals(".dockerignore")
                 || file.endsWith(".java") || file.endsWith(".kt") || file.endsWith(".kts") || file.endsWith(".js")
                 || file.endsWith(".jsx") || file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".py")
                 || file.endsWith(".go") || file.endsWith(".rs") || file.endsWith(".rb") || file.endsWith(".php")
@@ -502,12 +534,67 @@ public class GitHubRepositoryAnalyzer {
             try {
                 JsonNode root = mapper.readTree(text);
                 for (String section : List.of("dependencies", "devDependencies")) {
-                    asMap(root.path(section)).forEach((name, version) -> dependencies.add(name + " " + version));
+                    asMap(root.path(section)).forEach((name, version) -> {
+                        if (name.matches("[@A-Za-z0-9_./-]{1,150}")) dependencies.add(name + " " +
+                                (version instanceof String value && value.matches("[A-Za-z0-9.*^~<>=|+ -]{1,80}") ? value : "(custom source; inspect manifest)"));
+                    });
                 }
             } catch (Exception ignored) { }
+        } else if (filename.equals("pom.xml")) {
+            Pattern.compile("<artifactId>([A-Za-z0-9_.-]+)</artifactId>").matcher(text).results()
+                    .limit(25).forEach(match -> dependencies.add("Maven: " + match.group(1)));
         } else if (filename.equals("requirements.txt")) {
-            text.lines().map(String::trim).filter(line -> !line.isBlank() && !line.startsWith("#") && !line.startsWith("-"))
+            text.lines().map(String::trim).filter(line -> line.matches("[A-Za-z0-9_.-]+(?:\\[[A-Za-z0-9_,.-]+\\])?(?:[<>=!~]+[A-Za-z0-9_.*+,<>=!~-]+)?"))
                     .limit(30).forEach(dependencies::add);
+        }
+    }
+
+    private void inspectBuildProfile(String path, String filename, String text, List<Map<String, Object>> profiles) {
+        String directory = path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : ".";
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("directory", directory);
+        profile.put("manifest", path);
+        if (filename.equals("package.json")) {
+            try {
+                JsonNode node = mapper.readTree(text);
+                profile.put("ecosystem", "node");
+                profile.put("framework", node.path("dependencies").has("next") ? "Next.js" : "Node.js");
+                profile.put("scripts", List.of("build", "test", "lint", "start").stream().filter(name -> node.path("scripts").has(name)).toList());
+                var nodeVersion = Pattern.compile("^[\\s^~>=v]*([0-9]{1,2})(?:\\.|$|\\s)").matcher(node.path("engines").path("node").asText(""));
+                boolean versionFound = nodeVersion.find();
+                profile.put("runtime", versionFound ? nodeVersion.group(1) : "22");
+                profile.put("runtimeEstimated", !versionFound);
+            } catch (Exception ignored) { return; }
+        } else if (filename.equals("pom.xml") || filename.startsWith("build.gradle")) {
+            profile.put("ecosystem", filename.equals("pom.xml") ? "maven" : "gradle");
+            profile.put("framework", text.contains("spring-boot") ? "Spring Boot" : "Java");
+            var version = Pattern.compile("<(?:java.version|maven.compiler.release)>([0-9]{1,2})</").matcher(text);
+            profile.put("runtime", version.find() ? version.group(1) : "21");
+            profile.put("runtimeEstimated", !Pattern.compile("<(?:java.version|maven.compiler.release)>[0-9]{1,2}</").matcher(text).find());
+            profile.put("scripts", List.of("build", "test"));
+        } else if (filename.equals("requirements.txt") || filename.equals("pyproject.toml")) {
+            profile.put("ecosystem", "python");
+            profile.put("framework", text.toLowerCase(Locale.ROOT).contains("django") ? "Django" : text.toLowerCase(Locale.ROOT).contains("fastapi") ? "FastAPI" : "Python");
+            profile.put("runtime", "3.12");
+            profile.put("runtimeEstimated", true);
+            profile.put("scripts", text.toLowerCase(Locale.ROOT).contains("pytest") ? List.of("test") : List.of());
+        } else return;
+        profile.put("inspected", true);
+        profiles.add(profile);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void enrichBuildProfiles(Map<String, Object> sourceScan, List<String> files) {
+        for (var profile : (List<Map<String, Object>>) sourceScan.getOrDefault("buildProfiles", List.of())) {
+            String directory = profile.get("directory").toString();
+            String prefix = directory.equals(".") ? "" : directory + "/";
+            if ("node".equals(profile.get("ecosystem"))) {
+                String manager = files.contains(prefix + "pnpm-lock.yaml") ? "pnpm" : files.contains(prefix + "yarn.lock") ? "yarn" : "npm";
+                profile.put("packageManager", manager);
+                profile.put("lockfileDetected", files.contains(prefix + "package-lock.json") || files.contains(prefix + "pnpm-lock.yaml") || files.contains(prefix + "yarn.lock"));
+            }
+            if ("maven".equals(profile.get("ecosystem"))) profile.put("wrapperDetected", files.contains(prefix + "mvnw"));
+            if ("gradle".equals(profile.get("ecosystem"))) profile.put("wrapperDetected", files.contains(prefix + "gradlew"));
         }
     }
 

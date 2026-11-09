@@ -24,7 +24,7 @@ export default function SignupPage() {
   }
   return <div className="auth-card signup-card">
     <div className="auth-brand"><Brand /></div>
-    <div className="auth-heading"><div className="eyebrow">GET STARTED</div><h1>Create your account</h1><p>A calmer, clearer way to move work forward.</p></div>
+    <div className="auth-heading"><h1>Create account</h1><p>Set up a personal workspace. You can invite a team later.</p></div>
     <form className="auth-form" onSubmit={submit}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <label>Your name<input autoComplete="name" placeholder="Alex Morgan" value={name} onChange={e => setName(e.target.value)} required maxLength={100} /></label>
@@ -33,6 +33,6 @@ export default function SignupPage() {
       <button className="primary-button" disabled={busy}>{busy ? <><span className="spinner"/> Creating account…</> : "Create account"}</button>
     </form>
     <div className="auth-switch">Already have an account? <Link href="/login">Sign in <span>→</span></Link></div>
-    <div className="auth-foot"><span>© 2026 TaskFlow Pro</span><span>Built for teams that get things done</span></div>
+    <div className="auth-foot"><span>© 2026 TaskFlow Pro</span></div>
   </div>;
 }

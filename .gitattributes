@@ -1,0 +1,2 @@
+run.sh text eol=lf
+setup-fedora.sh text eol=lf

@@ -22,7 +22,7 @@ export default function LoginPage() {
   }
   return <div className="auth-card">
     <div className="auth-brand"><Brand /></div>
-    <div className="auth-heading"><div className="eyebrow">WELCOME BACK</div><h1>Sign in to your workspace</h1><p>Pick up where your team left off.</p></div>
+    <div className="auth-heading"><h1>Sign in</h1><p>Use your TaskFlow Pro account.</p></div>
     <form className="auth-form" onSubmit={submit}>
       {error && <div className="form-error" role="alert">{error}</div>}
       <label>Email address<input type="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} /></label>
@@ -30,6 +30,6 @@ export default function LoginPage() {
       <button className="primary-button" disabled={busy}>{busy ? <><span className="spinner"/> Signing in…</> : "Sign in"}</button>
     </form>
     <div className="auth-switch">New to TaskFlow Pro? <Link href="/signup">Create an account <span>→</span></Link></div>
-    <div className="auth-foot"><span>© 2026 TaskFlow Pro</span><span>Built for teams that get things done</span></div>
+    <div className="auth-foot"><span>© 2026 TaskFlow Pro</span></div>
   </div>;
 }
