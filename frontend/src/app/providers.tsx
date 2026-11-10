@@ -12,6 +12,16 @@ type AuthContextValue = {
 };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+async function fetchUser(): Promise<User | null> {
+  if (!getToken()) return null;
+  try {
+    return await api<User>("/api/users/me", {}, true);
+  } catch {
+    clearToken();
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,21 +30,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const publicRoute = pathname === "/login" || pathname === "/signup";
 
   async function refresh() {
-    const token = getToken();
-    if (!token) {
-      setUser(null);
-      return;
-    }
-    try {
-      setUser(await api<User>("/api/users/me", {}, true));
-    } catch {
-      clearToken();
-      setUser(null);
-    }
+    setUser(await fetchUser());
   }
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
+    let live = true;
+    fetchUser().then((value) => {
+      if (live) {
+        setUser(value);
+        setLoading(false);
+      }
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   useEffect(() => {

@@ -186,4 +186,30 @@ describe("Engineering interactions", () => {
     ).toHaveAttribute("href", "#repository-analysis");
     expect(screen.queryByText("100%")).not.toBeInTheDocument();
   });
+  it("applies confirmed preference values to the document", async () => {
+    const user = userEvent.setup();
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/integrations")) return {};
+      if (init?.method === "PUT") return JSON.parse(init.body as string);
+      return { compactMode: false, reduceMotion: false };
+    });
+    render(
+      <IntelligencePanel
+        view="preferences"
+        repository={null}
+        request={request as Request}
+      />,
+    );
+    await user.click(
+      await screen.findByRole("switch", { name: /Compact spacing/ }),
+    );
+    await screen.findByText("Preferences saved to your account.");
+    expect(document.documentElement).toHaveAttribute("data-compact", "true");
+    expect(document.documentElement).toHaveAttribute(
+      "data-reduce-motion",
+      "false",
+    );
+    document.documentElement.removeAttribute("data-compact");
+    document.documentElement.removeAttribute("data-reduce-motion");
+  });
 });

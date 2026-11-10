@@ -28,7 +28,7 @@ public class WorkflowGenerationService {
             return docker(profiles);
         }
         if (!kind.equals("workflow")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported configuration kind.");
-        if (profiles.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No inspected build profiles are available. Refresh analysis or configure the pipeline manually.");
+        if (profiles.isEmpty()) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "No inspected build profiles are available. Refresh analysis or configure the pipeline manually.");
         StringBuilder yaml = new StringBuilder("""
                 # Draft: review module paths, runtime versions and action SHAs before applying.
                 # Never overwrite an existing workflow without comparing it first.
@@ -47,17 +47,17 @@ public class WorkflowGenerationService {
         List<String> notes = new ArrayList<>();
         int count = 0;
         for (JsonNode profile : profiles) {
-            String directory = profile.path("directory").asText(".");
+            String directory = profile.path("directory").asString(".");
             if (!directory.matches("[A-Za-z0-9_./-]+") || List.of(directory.split("/")).contains("..")) continue;
-            String ecosystem = profile.path("ecosystem").asText();
+            String ecosystem = profile.path("ecosystem").asString();
             if (!List.of("node", "maven", "gradle", "python").contains(ecosystem)) continue;
             yaml.append("  module-").append(++count).append(":\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    defaults:\n      run:\n        working-directory: '").append(directory).append("'\n    steps:\n      - uses: actions/checkout@v4\n");
-            String runtime = profile.path("runtime").asText(ecosystem.equals("node") ? "22" : "21");
+            String runtime = profile.path("runtime").asString(ecosystem.equals("node") ? "22" : "21");
             if (!runtime.matches("[0-9]{1,2}(\\.[0-9]{1,2})?")) runtime = "21";
             if (profile.path("runtimeEstimated").asBoolean()) notes.add(directory + ": runtime " + runtime + " is a proposed default; confirm compatibility.");
             switch (ecosystem) {
                 case "node" -> {
-                    String manager = profile.path("packageManager").asText("npm");
+                    String manager = profile.path("packageManager").asString("npm");
                     if (!List.of("npm", "pnpm", "yarn").contains(manager)) manager = "npm";
                     yaml.append("      - uses: actions/setup-node@v4\n        with:\n          node-version: '").append(runtime).append("'\n");
                     if (!manager.equals("npm")) yaml.append("      - name: Enable declared package manager\n        run: corepack enable\n");
@@ -80,7 +80,7 @@ public class WorkflowGenerationService {
                     notes.add(directory + ": configure dedicated test database/environment secrets if integration tests need them.");
                 }
                 case "python" -> {
-                    yaml.append("      - uses: actions/setup-python@v5\n        with:\n          python-version: '").append(runtime).append("'\n      - name: Install dependencies\n        run: ").append(profile.path("manifest").asText().endsWith("requirements.txt") ? "python -m pip install -r requirements.txt" : "python -m pip install .").append("\n");
+                    yaml.append("      - uses: actions/setup-python@v5\n        with:\n          python-version: '").append(runtime).append("'\n      - name: Install dependencies\n        run: ").append(profile.path("manifest").asString().endsWith("requirements.txt") ? "python -m pip install -r requirements.txt" : "python -m pip install .").append("\n");
                     if (tests && hasScript(profile, "test")) yaml.append("      - name: Test\n        run: python -m pytest\n");
                     if (lint) notes.add(directory + ": configure a Python lint tool before adding a lint command.");
                     if (security) yaml.append("      - name: Dependency audit\n        run: |\n          python -m pip install pip-audit\n          python -m pip_audit\n");
@@ -88,7 +88,7 @@ public class WorkflowGenerationService {
                 default -> { }
             }
         }
-        if (count == 0) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "No supported, inspected build profile was found.");
+        if (count == 0) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "No supported, inspected build profile was found.");
         if (container || publish) {
             yaml.append("  container:\n    needs: [");
             for (int i = 1; i <= count; i++) yaml.append(i > 1 ? ", " : "").append("module-").append(i);
@@ -123,21 +123,21 @@ public class WorkflowGenerationService {
         return new Draft(".github/workflows/taskflow-ci.yml", yaml.toString(), Map.of("notes", notes, "requiredSecrets", publish ? List.of("GITHUB_TOKEN (automatically provided by GitHub)") : List.of(), "existingWorkflows", analysis.path("workflows"), "overwrite", false));
     }
     private boolean hasScript(JsonNode profile, String name) {
-        for (JsonNode script : profile.path("scripts")) if (name.equals(script.asText())) return true;
+        for (JsonNode script : profile.path("scripts")) if (name.equals(script.asString())) return true;
         return false;
     }
     private Draft docker(List<JsonNode> profiles) {
-        if (profiles.size() != 1) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Docker generation requires one inspected module. For a monorepo, use the deployment plan and adapt a separate Dockerfile for each service.");
+        if (profiles.size() != 1) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Docker generation requires one inspected module. For a monorepo, use the deployment plan and adapt a separate Dockerfile for each service.");
         JsonNode p = profiles.getFirst();
-        String directory = p.path("directory").asText(".");
-        if (!directory.matches("[A-Za-z0-9_./-]+") || List.of(directory.split("/")).contains("..")) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Review the module path manually.");
-        String ecosystem = p.path("ecosystem").asText();
-        String version = p.path("runtime").asText("21");
+        String directory = p.path("directory").asString(".");
+        if (!directory.matches("[A-Za-z0-9_./-]+") || List.of(directory.split("/")).contains("..")) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Review the module path manually.");
+        String ecosystem = p.path("ecosystem").asString();
+        String version = p.path("runtime").asString("21");
         if (!version.matches("[0-9]{1,2}(\\.[0-9]{1,2})?")) version = "21";
         String content;
         if (ecosystem.equals("maven")) content = "FROM maven:3.9-eclipse-temurin-" + version + " AS build\nWORKDIR /source\nCOPY " + directory + "/ ./\nRUN mvn -B package -DskipTests\nFROM eclipse-temurin:" + version + "-jre\nWORKDIR /app\nCOPY --from=build /source/target/*.jar app.jar\nUSER 10001:10001\nEXPOSE 8080\nENTRYPOINT [\"java\", \"-jar\", \"app.jar\"]\n";
         else if (ecosystem.equals("node") && hasScript(p, "start")) content = "FROM node:" + version + "-alpine AS build\nWORKDIR /app\nCOPY " + directory + "/ ./\nRUN npm ci\n" + (hasScript(p, "build") ? "RUN npm run build\n" : "") + "ENV NODE_ENV=production\nUSER node\nEXPOSE 3000\nCMD [\"npm\", \"start\"]\n";
-        else throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "A safe runtime entry point was not detected. Use a deployment plan to review the start command manually.");
+        else throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "A safe runtime entry point was not detected. Use a deployment plan to review the start command manually.");
         return new Draft("Dockerfile.taskflow", "# Draft: review .dockerignore, build context, ports and runtime configuration.\n" + content,
                 Map.of("notes", List.of("Add .dockerignore rules for .env, node_modules, .git and local credentials before building.", "Review exposed ports and external migration paths. Tests run separately in CI."), "requiredSecrets", List.of(), "overwrite", false));
     }
@@ -145,10 +145,10 @@ public class WorkflowGenerationService {
         StringBuilder yaml = new StringBuilder("version: 2\nupdates:\n");
         java.util.Set<String> entries = new java.util.LinkedHashSet<>();
         for (JsonNode profile : analysis.path("buildProfiles")) {
-            String ecosystem = profile.path("ecosystem").asText();
+            String ecosystem = profile.path("ecosystem").asString();
             if (ecosystem.equals("node")) ecosystem = "npm";
             if (ecosystem.equals("python")) ecosystem = "pip";
-            String directory = profile.path("directory").asText(".");
+            String directory = profile.path("directory").asString(".");
             if (!List.of("npm", "pip", "maven", "gradle").contains(ecosystem) || !directory.matches("[A-Za-z0-9_./-]+") || List.of(directory.split("/")).contains("..")) continue;
             String item = "  - package-ecosystem: '" + ecosystem + "'\n    directory: '" + (directory.equals(".") ? "/" : "/" + directory) + "'\n    schedule:\n      interval: weekly\n";
             if (entries.add(item)) yaml.append(item);

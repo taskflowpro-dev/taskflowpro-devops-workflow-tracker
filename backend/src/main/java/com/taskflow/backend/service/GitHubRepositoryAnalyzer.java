@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -81,7 +80,7 @@ public class GitHubRepositoryAnalyzer {
         String root = "repos/" + ref.owner() + "/" + ref.name();
         JsonNode repository = request(root, false);
         JsonNode languages = request(root + "/languages", false);
-        JsonNode tree = request(root + "/git/trees/" + encodePathSegment(repository.path("default_branch").asText("main")) + "?recursive=1", true);
+        JsonNode tree = request(root + "/git/trees/" + encodePathSegment(repository.path("default_branch").asString("main")) + "?recursive=1", true);
         JsonNode readmeNode = request(root + "/readme", true);
         JsonNode commitsNode = request(root + "/commits?per_page=10", true);
         JsonNode contributorsNode = request(root + "/contributors?per_page=10", true);
@@ -89,7 +88,7 @@ public class GitHubRepositoryAnalyzer {
         JsonNode pullNode = request(root + "/pulls?state=open&per_page=20", true);
         JsonNode releaseNode = request(root + "/releases/latest", true);
         JsonNode runsNode = request(root + "/actions/runs?per_page=5", true);
-        Map<String, Object> sourceScan = scanSourceArchive(ref, repository.path("default_branch").asText("main"));
+        Map<String, Object> sourceScan = scanSourceArchive(ref, repository.path("default_branch").asString("main"));
 
         List<String> filePaths = new ArrayList<>();
         List<String> workflowPaths = new ArrayList<>();
@@ -102,14 +101,14 @@ public class GitHubRepositoryAnalyzer {
         JsonNode entries = tree == null ? null : tree.path("tree");
         if (entries != null && entries.isArray()) {
             for (JsonNode entry : entries) {
-                String path = entry.path("path").asText("");
+                String path = entry.path("path").asString("");
                 if (path.isBlank()) continue;
-                if ("tree".equals(entry.path("type").asText())) {
+                if ("tree".equals(entry.path("type").asString())) {
                     directoryCount++;
                     directories.add(path.contains("/") ? path.substring(0, path.indexOf('/')) : path);
                     continue;
                 }
-                if (!"blob".equals(entry.path("type").asText())) continue;
+                if (!"blob".equals(entry.path("type").asString())) continue;
                 fileCount++;
                 filePaths.add(path);
                 String top = path.contains("/") ? path.substring(0, path.indexOf('/')) : path;
@@ -211,19 +210,19 @@ public class GitHubRepositoryAnalyzer {
 
     private Map<String, Object> repositoryInfo(JsonNode repository, RepositoryRef ref) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("fullName", repository.path("full_name").asText(ref.owner() + "/" + ref.name()));
-        result.put("url", repository.path("html_url").asText(ref.canonicalUrl()));
-        result.put("description", repository.path("description").asText(""));
-        result.put("language", repository.path("language").isNull() ? "Not detected" : repository.path("language").asText());
-        result.put("defaultBranch", repository.path("default_branch").asText("main"));
+        result.put("fullName", repository.path("full_name").asString(ref.owner() + "/" + ref.name()));
+        result.put("url", repository.path("html_url").asString(ref.canonicalUrl()));
+        result.put("description", repository.path("description").asString(""));
+        result.put("language", repository.path("language").isNull() ? "Not detected" : repository.path("language").asString());
+        result.put("defaultBranch", repository.path("default_branch").asString("main"));
         result.put("stars", repository.path("stargazers_count").asInt());
         result.put("forks", repository.path("forks_count").asInt());
         result.put("watchers", repository.path("subscribers_count").asInt());
         result.put("openIssues", repository.path("open_issues_count").asInt());
-        result.put("updatedAt", repository.path("pushed_at").asText(""));
-        result.put("createdAt", repository.path("created_at").asText(""));
+        result.put("updatedAt", repository.path("pushed_at").asString(""));
+        result.put("createdAt", repository.path("created_at").asString(""));
         result.put("sizeKb", repository.path("size").asInt());
-        result.put("license", repository.path("license").path("spdx_id").asText("Not detected"));
+        result.put("license", repository.path("license").path("spdx_id").asString("Not detected"));
         result.put("archived", repository.path("archived").asBoolean(false));
         result.put("fork", repository.path("fork").asBoolean(false));
         result.put("topics", textArray(repository.path("topics")));
@@ -286,25 +285,25 @@ public class GitHubRepositoryAnalyzer {
         if (commits != null && commits.isArray()) for (JsonNode commit : commits) {
             JsonNode data = commit.path("commit");
             JsonNode author = commit.path("author");
-            recentCommits.add(Map.of("sha", commit.path("sha").asText("").substring(0, Math.min(7, commit.path("sha").asText("").length())),
-                    "message", firstLine(data.path("message").asText("")), "author", author.path("login").asText(data.path("author").path("name").asText("Unknown")),
-                    "date", data.path("author").path("date").asText(""), "url", commit.path("html_url").asText("")));
+            recentCommits.add(Map.of("sha", commit.path("sha").asString("").substring(0, Math.min(7, commit.path("sha").asString("").length())),
+                    "message", firstLine(data.path("message").asString("")), "author", author.path("login").asString(data.path("author").path("name").asString("Unknown")),
+                    "date", data.path("author").path("date").asString(""), "url", commit.path("html_url").asString("")));
             if (recentCommits.size() == 10) break;
         }
         List<Map<String, Object>> topContributors = new ArrayList<>();
         if (contributors != null && contributors.isArray()) for (JsonNode contributor : contributors) {
-            topContributors.add(Map.of("login", contributor.path("login").asText("Unknown"), "contributions", contributor.path("contributions").asInt(),
-                    "url", contributor.path("html_url").asText("")));
+            topContributors.add(Map.of("login", contributor.path("login").asString("Unknown"), "contributions", contributor.path("contributions").asInt(),
+                    "url", contributor.path("html_url").asString("")));
             if (topContributors.size() == 10) break;
         }
-        Map<String, Object> latestRelease = release == null ? Map.of() : Map.of("name", release.path("name").asText(release.path("tag_name").asText("Release")),
-                "tag", release.path("tag_name").asText(""), "publishedAt", release.path("published_at").asText(""), "url", release.path("html_url").asText(""));
+        Map<String, Object> latestRelease = release == null ? Map.of() : Map.of("name", release.path("name").asString(release.path("tag_name").asString("Release")),
+                "tag", release.path("tag_name").asString(""), "publishedAt", release.path("published_at").asString(""), "url", release.path("html_url").asString(""));
         List<Map<String, Object>> runsList = new ArrayList<>();
         JsonNode workflowRuns = runs == null ? null : runs.path("workflow_runs");
         if (workflowRuns != null && workflowRuns.isArray()) for (JsonNode run : workflowRuns) {
-            runsList.add(Map.of("name", run.path("name").asText("Workflow"), "status", run.path("status").asText("unknown"),
-                    "conclusion", run.path("conclusion").asText(""), "branch", run.path("head_branch").asText(""),
-                    "url", run.path("html_url").asText(""), "updatedAt", run.path("updated_at").asText("")));
+            runsList.add(Map.of("name", run.path("name").asString("Workflow"), "status", run.path("status").asString("unknown"),
+                    "conclusion", run.path("conclusion").asString(""), "branch", run.path("head_branch").asString(""),
+                    "url", run.path("html_url").asString(""), "updatedAt", run.path("updated_at").asString("")));
             if (runsList.size() == 5) break;
         }
         return Map.of("recentCommits", recentCommits, "contributors", topContributors, "latestRelease", latestRelease,
@@ -316,9 +315,9 @@ public class GitHubRepositoryAnalyzer {
         List<Map<String, Object>> result = new ArrayList<>();
         if (node != null && node.isArray()) for (JsonNode issue : node) {
             if (issue.has("pull_request")) continue;
-            result.add(Map.of("number", issue.path("number").asInt(), "title", issue.path("title").asText("Untitled issue"),
-                    "url", issue.path("html_url").asText(""), "state", issue.path("state").asText("open"), "createdAt", issue.path("created_at").asText(""),
-                    "updatedAt", issue.path("updated_at").asText(""), "labels", labels(issue.path("labels"))));
+            result.add(Map.of("number", issue.path("number").asInt(), "title", issue.path("title").asString("Untitled issue"),
+                    "url", issue.path("html_url").asString(""), "state", issue.path("state").asString("open"), "createdAt", issue.path("created_at").asString(""),
+                    "updatedAt", issue.path("updated_at").asString(""), "labels", labels(issue.path("labels"))));
             if (result.size() == 15) break;
         }
         return result;
@@ -327,10 +326,10 @@ public class GitHubRepositoryAnalyzer {
     private List<Map<String, Object>> pullRequests(JsonNode node) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (node != null && node.isArray()) for (JsonNode pr : node) {
-            result.add(Map.of("number", pr.path("number").asInt(), "title", pr.path("title").asText("Untitled pull request"),
-                    "url", pr.path("html_url").asText(""), "draft", pr.path("draft").asBoolean(false),
-                    "createdAt", pr.path("created_at").asText(""), "updatedAt", pr.path("updated_at").asText(""),
-                    "user", pr.path("user").path("login").asText("Unknown")));
+            result.add(Map.of("number", pr.path("number").asInt(), "title", pr.path("title").asString("Untitled pull request"),
+                    "url", pr.path("html_url").asString(""), "draft", pr.path("draft").asBoolean(false),
+                    "createdAt", pr.path("created_at").asString(""), "updatedAt", pr.path("updated_at").asString(""),
+                    "user", pr.path("user").path("login").asString("Unknown")));
             if (result.size() == 15) break;
         }
         return result;
@@ -560,7 +559,7 @@ public class GitHubRepositoryAnalyzer {
                 profile.put("ecosystem", "node");
                 profile.put("framework", node.path("dependencies").has("next") ? "Next.js" : "Node.js");
                 profile.put("scripts", List.of("build", "test", "lint", "start").stream().filter(name -> node.path("scripts").has(name)).toList());
-                var nodeVersion = Pattern.compile("^[\\s^~>=v]*([0-9]{1,2})(?:\\.|$|\\s)").matcher(node.path("engines").path("node").asText(""));
+                var nodeVersion = Pattern.compile("^[\\s^~>=v]*([0-9]{1,2})(?:\\.|$|\\s)").matcher(node.path("engines").path("node").asString(""));
                 boolean versionFound = nodeVersion.find();
                 profile.put("runtime", versionFound ? nodeVersion.group(1) : "22");
                 profile.put("runtimeEstimated", !versionFound);
@@ -613,7 +612,7 @@ public class GitHubRepositoryAnalyzer {
                     "priority", check.get("priority"), "category", "Engineering health", "source", "repository analysis"));
         }
         if (!hasReadme) result.add(suggestion("Add a README", "Document what the project does, how to run it, and how to contribute.", "MEDIUM", "Documentation"));
-        if ("Not detected".equals(repository.path("license").path("spdx_id").asText("Not detected")))
+        if ("Not detected".equals(repository.path("license").path("spdx_id").asString("Not detected")))
             result.add(suggestion("Add a license", "Choose and add a license so users know how the project can be used.", "LOW", "Project health"));
         if (paths.stream().noneMatch(path -> path.equalsIgnoreCase(".gitignore")))
             result.add(suggestion("Add a .gitignore", "Exclude build outputs, local settings, and secrets from version control.", "LOW", "Repository hygiene"));
@@ -649,7 +648,7 @@ public class GitHubRepositoryAnalyzer {
 
     private String decodeContent(JsonNode node) {
         if (node == null) return "";
-        String encoded = node.path("content").asText("").replaceAll("\\s", "");
+        String encoded = node.path("content").asString("").replaceAll("\\s", "");
         if (encoded.isBlank() || encoded.length() > 1_500_000) return "";
         try { return new String(Base64.getDecoder().decode(encoded), StandardCharsets.UTF_8); }
         catch (IllegalArgumentException ignored) { return ""; }
@@ -689,13 +688,13 @@ public class GitHubRepositoryAnalyzer {
 
     private List<String> labels(JsonNode node) {
         List<String> result = new ArrayList<>();
-        if (node != null && node.isArray()) for (JsonNode label : node) result.add(label.path("name").asText());
+        if (node != null && node.isArray()) for (JsonNode label : node) result.add(label.path("name").asString());
         return result;
     }
 
     private List<String> textArray(JsonNode node) {
         List<String> result = new ArrayList<>();
-        if (node != null && node.isArray()) for (JsonNode value : node) result.add(value.asText());
+        if (node != null && node.isArray()) for (JsonNode value : node) result.add(value.asString());
         return result;
     }
 

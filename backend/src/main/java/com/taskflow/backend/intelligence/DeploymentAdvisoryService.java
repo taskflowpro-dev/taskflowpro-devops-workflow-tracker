@@ -11,8 +11,8 @@ public class DeploymentAdvisoryService {
     public Map<String, Object> plan(IntelligenceStore.Repository repository, String target) {
         JsonNode analysis = repository.analysis();
         List<Map<String, Object>> modules = new ArrayList<>();
-        for (JsonNode profile : analysis.path("buildProfiles")) modules.add(Map.of("directory", profile.path("directory").asText(),
-                "framework", profile.path("framework").asText(), "ecosystem", profile.path("ecosystem").asText()));
+        for (JsonNode profile : analysis.path("buildProfiles")) modules.add(Map.of("directory", profile.path("directory").asString(),
+                "framework", profile.path("framework").asString(), "ecosystem", profile.path("ecosystem").asString()));
         String rationale = "For " + repository.name() + ", " + modules.size() + " inspected build modules are available. "
                 + (target.equals("ubuntu-vps") ? "A VPS with reviewed containers offers direct control; you own patching, backups, networking and availability."
                 : "Use a managed application/container platform and a private managed database to reduce host operations; check runtime support, cost and regional requirements.");

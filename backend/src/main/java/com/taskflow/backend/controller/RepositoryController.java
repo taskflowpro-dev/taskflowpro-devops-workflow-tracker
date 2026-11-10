@@ -154,7 +154,6 @@ public class RepositoryController {
         return saved;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> withParsedAnalysis(Map<String, Object> result) {
         Object json = result.remove("analysisJson");
         try { result.put("analysis", mapper.readValue((String) json, Map.class)); }

@@ -25,12 +25,18 @@ export default function ChatView({
 }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [history, setHistory] = useState<{
+    conversationId: number | null;
+    messages: Message[];
+  }>({ conversationId: null, messages: [] });
   const [provider, setProvider] = useState<IntegrationStatus | null>(null);
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const messages = history.conversationId === selected ? history.messages : [];
+  const loadingConversation =
+    loading || (selected !== null && history.conversationId !== selected);
   const base = `/api/intelligence/repositories/${repository.id}/conversations`;
   useEffect(() => {
     let live = true;
@@ -56,22 +62,17 @@ export default function ChatView({
     };
   }, [base, request]);
   useEffect(() => {
-    if (!selected) {
-      setMessages([]);
-      return;
-    }
+    if (!selected) return;
     let live = true;
-    setLoading(true);
-    setMessages([]);
     request<Message[]>(`${base}/${selected}/messages`)
       .then((items) => {
-        if (live) setMessages(items);
+        if (live) setHistory({ conversationId: selected, messages: items });
       })
       .catch((e) => {
-        if (live) setError(e.message);
-      })
-      .finally(() => {
-        if (live) setLoading(false);
+        if (live) {
+          setHistory({ conversationId: selected, messages: [] });
+          setError(e.message);
+        }
       });
     return () => {
       live = false;
@@ -79,7 +80,7 @@ export default function ChatView({
   }, [base, selected, request]);
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!content.trim() || loading) return;
+    if (!content.trim() || loadingConversation) return;
     setBusy(true);
     setError("");
     try {
@@ -97,7 +98,7 @@ export default function ChatView({
         body: JSON.stringify({ content }),
       });
       setSelected(id);
-      setMessages(next);
+      setHistory({ conversationId: id, messages: next });
       setContent("");
     } catch (e) {
       setError(message(e));
@@ -117,10 +118,10 @@ export default function ChatView({
         <button
           className="icon-button"
           aria-label="New conversation"
-          disabled={busy || loading}
+          disabled={busy || loadingConversation}
           onClick={() => {
             setSelected(null);
-            setMessages([]);
+            setHistory({ conversationId: null, messages: [] });
             setError("");
           }}
         >
@@ -141,7 +142,10 @@ export default function ChatView({
           aria-label="Conversation history"
           value={selected ?? ""}
           disabled={busy}
-          onChange={(e) => setSelected(Number(e.target.value) || null)}
+          onChange={(e) => {
+            setSelected(Number(e.target.value) || null);
+            setError("");
+          }}
         >
           <option value="">New conversation</option>
           {conversations.map((item) => (
@@ -152,7 +156,7 @@ export default function ChatView({
         </select>
       )}
       <div className="chat-messages" aria-live="polite">
-        {loading ? (
+        {loadingConversation ? (
           <p role="status">Loading conversation…</p>
         ) : messages.length ? (
           messages.map((item) => (
@@ -210,7 +214,7 @@ export default function ChatView({
         />
         <button
           className="primary-compact"
-          disabled={busy || loading || !content.trim()}
+          disabled={busy || loadingConversation || !content.trim()}
           aria-label="Send message"
         >
           {busy ? "Thinking…" : <Send size={16} />}
