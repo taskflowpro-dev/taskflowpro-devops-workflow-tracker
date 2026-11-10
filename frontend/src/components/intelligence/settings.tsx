@@ -51,9 +51,13 @@ export default function SettingsView({
         { method: "PUT", body: JSON.stringify(next) },
       );
       setPreferences(saved);
-      document.documentElement.dataset.compact = String(saved.compactMode);
-      document.documentElement.dataset.reduceMotion = String(
-        saved.reduceMotion,
+      document.documentElement.setAttribute(
+        "data-compact",
+        String(saved.compactMode),
+      );
+      document.documentElement.setAttribute(
+        "data-reduce-motion",
+        String(saved.reduceMotion),
       );
       setFeedback("Preferences saved to your account.");
     } catch (e) {

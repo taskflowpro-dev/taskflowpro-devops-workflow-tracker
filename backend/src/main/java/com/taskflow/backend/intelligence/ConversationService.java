@@ -83,7 +83,7 @@ public class ConversationService {
             try (var body = response.body()) {
                 byte[] bytes = body.readNBytes(128001);
                 if (response.statusCode() != 200 || bytes.length > 128000) throw new IllegalStateException();
-                String answer = mapper.readTree(bytes).path("message").path("content").asText("");
+                String answer = mapper.readTree(bytes).path("message").path("content").asString("");
                 if (answer.isBlank()) throw new IllegalStateException();
                 return answer;
             }
@@ -104,9 +104,9 @@ public class ConversationService {
         else result.append("Use the roadmap to prioritize missing evidence. Workflow Builder can generate a draft using inspected module paths; review scripts, lockfiles and runtime versions before applying it on a branch.\n\n");
         result.append("Inspected modules:\n");
         if (repo.analysis().path("buildProfiles").isEmpty()) result.append("No build profiles are available. Refresh repository analysis.\n");
-        repo.analysis().path("buildProfiles").forEach(p -> result.append("• ").append(p.path("directory").asText()).append(" — ").append(p.path("framework").asText()).append("; runtime ").append(p.path("runtime").asText()).append(p.path("runtimeEstimated").asBoolean() ? " (proposed default)" : "").append('\n'));
+        repo.analysis().path("buildProfiles").forEach(p -> result.append("• ").append(p.path("directory").asString()).append(" — ").append(p.path("framework").asString()).append("; runtime ").append(p.path("runtime").asString()).append(p.path("runtimeEstimated").asBoolean() ? " (proposed default)" : "").append('\n'));
         result.append("\nCurrent evidence:\n");
-        repo.analysis().path("checks").forEach(c -> result.append("• ").append(c.path("title").asText()).append(": ").append(c.path("status").asText()).append(" — ").append(c.path("evidence").asText()).append('\n'));
+        repo.analysis().path("checks").forEach(c -> result.append("• ").append(c.path("title").asString()).append(": ").append(c.path("status").asString()).append(" — ").append(c.path("evidence").asString()).append('\n'));
         result.append("\nCoverage and vulnerability results are unknown unless the corresponding tools have run. Checklist completion is self-reported.\nReference: https://docs.github.com/en/actions");
         return result.toString();
     }

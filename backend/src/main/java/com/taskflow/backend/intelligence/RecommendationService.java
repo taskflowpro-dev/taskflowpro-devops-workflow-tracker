@@ -41,9 +41,9 @@ public class RecommendationService {
         List<JsonNode> checks = new ArrayList<>();
         repo.analysis().path("checks").forEach(checks::add);
         for (JsonNode check : checks) {
-            String key = check.path("id").asText("");
+            String key = check.path("id").asString("");
             if (!List.of("ci", "tests", "lint", "container", "deploy", "security").contains(key)) continue;
-            String status = check.path("status").asText("UNKNOWN");
+            String status = check.path("status").asString("UNKNOWN");
             if (!List.of("PRESENT", "MISSING").contains(status)) status = "UNKNOWN";
             String title = switch (key) {
                 case "ci" -> "Build a reliable continuous integration pipeline";
@@ -61,9 +61,9 @@ public class RecommendationService {
                         evidence = EXCLUDED.evidence, observed_status = EXCLUDED.observed_status, analyzed_at = EXCLUDED.analyzed_at
                     RETURNING id
                     """, Long.class, repo.id(), scope.id(), key, title,
-                    "For " + repo.name() + ": " + check.path("recommendation").asText("Review the detected configuration and validate it in CI.")
+                    "For " + repo.name() + ": " + check.path("recommendation").asString("Review the detected configuration and validate it in CI.")
                             + " Detected stack: " + repo.analysis().path("techStack") + ". A detected file does not prove successful execution.",
-                    check.path("evidence").asText(check.path("detail").asText("Evidence unavailable; refresh repository analysis.")),
+                    check.path("evidence").asString(check.path("detail").asString("Evidence unavailable; refresh repository analysis.")),
                     priority, key.equals("deploy") ? "ADVANCED" : "MODERATE", status, java.sql.Timestamp.from(repo.analyzedAt()));
             var steps = steps(key, repo.analysis());
             for (int position = 0; position < steps.size(); position++) {
