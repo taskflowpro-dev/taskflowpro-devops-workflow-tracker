@@ -9,7 +9,7 @@ pipeline {
 
     environment {
         // Docker Hub username
-        DOCKERHUB_USER = 'YOUR_DOCKERHUB_USERNAME'
+        DOCKERHUB_USER = 'hirukshanan'
 
         // Frontend API URL embedded during Next.js build
         NEXT_PUBLIC_API_URL = 'http://localhost:8081'
