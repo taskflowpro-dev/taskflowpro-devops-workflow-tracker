@@ -1,0 +1,55 @@
+pipeline {
+    agent {
+        node {
+            label ''
+            // CHANGE THIS to the absolute path of the project folder on the Ubuntu machine.
+            customWorkspace '/home/ubuntu/taskflowpro-devops-workflow-tracker'
+        }
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    environment {
+        // Rootless Docker: use this user's socket unless Jenkins already sets DOCKER_HOST.
+        DOCKER_HOST = sh(returnStdout: true, script: 'echo "${DOCKER_HOST:-unix:///run/user/$(id -u)/docker.sock}"').trim()
+    }
+
+    stages {
+        stage('Check') {
+            steps {
+                // compose.yaml reads DATABASE_PASSWORD, JWT_SECRET, etc. from .env in this folder.
+                sh '''
+                    test -f .env || { echo "Missing .env in $PWD (copy .env.example)"; exit 1; }
+                    docker compose version
+                '''
+            }
+        }
+
+        stage('Build') {
+            steps { sh 'docker compose build' }
+        }
+
+        stage('Deploy') {
+            steps { sh 'docker compose up -d --wait --wait-timeout 180' }
+        }
+
+        stage('Verify') {
+            steps {
+                sh '''
+                    docker compose ps
+                    curl -fsS --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8081/actuator/health
+                    echo
+                    curl -fsS --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null -w "frontend HTTP %{http_code}\\n" http://localhost:3000
+                '''
+            }
+        }
+    }
+
+    post {
+        failure { sh 'docker compose logs --tail=80 || true' }
+    }
+}
