@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -8,20 +9,15 @@ pipeline {
     }
 
     environment {
-        // Docker Hub username
         DOCKERHUB_USER = 'hirukshanan'
-
-        // Frontend API URL embedded during Next.js build
-        NEXT_PUBLIC_API_URL = 'http://localhost:8081'
-
+        DOCKER_HOST = 'unix:///run/user/1001/docker.sock'
         DOCKER_BUILDKIT = '1'
+        NEXT_PUBLIC_API_URL = 'http://localhost:8081'
     }
 
     stages {
-
         stage('Checkout') {
             steps {
-                // Uses repository configured in Jenkins UI
                 checkout scm
 
                 script {
@@ -30,14 +26,21 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    env.API_REPO =
-                        "${env.DOCKERHUB_USER}/taskflow-backend"
-
-                    env.WEB_REPO =
-                        "${env.DOCKERHUB_USER}/taskflow-frontend"
+                    env.API_REPO = "${env.DOCKERHUB_USER}/taskflow-backend"
+                    env.WEB_REPO = "${env.DOCKERHUB_USER}/taskflow-frontend"
                 }
 
                 echo "Building commit: ${env.SHORT_SHA}"
+            }
+        }
+
+        stage('Verify Docker') {
+            steps {
+                sh '''
+                    set -eu
+                    echo "Using Docker socket: $DOCKER_HOST"
+                    docker info
+                '''
             }
         }
 
@@ -83,7 +86,6 @@ pipeline {
                         set -eu
 
                         export DOCKER_CONFIG="$WORKSPACE@tmp/docker-config"
-
                         mkdir -p "$DOCKER_CONFIG"
 
                         trap 'docker logout >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
